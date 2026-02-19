@@ -1,0 +1,289 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model Clinic {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  address   String?
+  phone     String?
+  email     String?
+  ownerId   String?  // Restored: Firebase User UID of creator
+  domain    String?  // Custom domain support
+  status    String   @default("ACTIVE") // ACTIVE, SUSPENDED, TRIAL
+  plan      String   @default("FREE")   // FREE, PRO, ENTERPRISE
+  
+  subscription Subscription?
+  usageRecords UsageRecord[]
+
+  users     User[]
+  patients  Patient[]
+  visits    Visit[]
+  appointments Appointment[]
+  invoices  Invoice[]
+  inventory InventoryItem[]
+  expenses  Expense[]
+  attachments Attachment[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Subscription {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  clinicId       String   @unique @db.ObjectId
+  clinic         Clinic   @relation(fields: [clinicId], references: [id])
+  
+  provider       String   // 'STRIPE', 'RAZORPAY'
+  providerSubId  String   // External ID
+  status         String   // ACTIVE, PAST_DUE, CANCELED
+  planId         String   // External Plan ID
+  
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean @default(false)
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model UsageRecord {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  clinicId  String   @db.ObjectId
+  clinic    Clinic   @relation(fields: [clinicId], references: [id])
+  
+  metric    String   // 'STORAGE_GB', 'SMS_SENT', 'DOCTOR_SEATS'
+  value     Int
+  month     String   // '2023-10'
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String   @unique
+  name      String?
+  role      String   @default("STAFF") // DOCTOR, ADMIN, STAFF
+  firebaseUid String @unique // Link to Firebase Auth
+  
+  clinicId  String   @db.ObjectId
+  clinic    Clinic   @relation(fields: [clinicId], references: [id])
+  
+  appointments Appointment[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Patient {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  firstName   String
+  lastName    String
+  dateOfBirth DateTime
+  gender      String
+  phone       String   @unique
+  email       String?
+  address     String?
+  password    String?  // Hashed password for Portal Access
+  
+  clinicId    String   @db.ObjectId
+  clinic      Clinic   @relation(fields: [clinicId], references: [id])
+  
+  appointments Appointment[]
+  visits       Visit[]
+  vitals       Vital[]
+  attachments  Attachment[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clinicId])
+  @@index([email])
+}
+
+model Appointment {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  
+  clinicId  String   @db.ObjectId
+  clinic    Clinic   @relation(fields: [clinicId], references: [id])
+  
+  patientId String   @db.ObjectId
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  
+  doctorId  String   @db.ObjectId
+  doctor    User     @relation(fields: [doctorId], references: [id])
+  
+  date      DateTime
+  status    String   @default("SCHEDULED")
+  type      String   @default("CONSULTATION")
+  notes     String?
+  
+  visit     Visit?
+  
+  tokenNumber Int?     // Daily queue token
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clinicId, date])
+  @@index([doctorId, date])
+  @@index([patientId])
+  @@index([status])
+}
+
+model Visit {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  visitDate   DateTime? @default(now())
+  
+  symptoms    String?
+  diagnosis   String?
+  notes       String?
+  
+  appointmentId String? @unique @db.ObjectId
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  
+  patientId   String   @db.ObjectId
+  patient     Patient  @relation(fields: [patientId], references: [id])
+  
+  clinicId    String?   @db.ObjectId
+  clinic      Clinic?   @relation(fields: [clinicId], references: [id])
+  
+  prescriptions Prescription[]
+  vitals        Vital[]
+  invoices      Invoice[]
+  
+  // AI Scribe Fields
+  transcript String?  // Full text of the conversation
+  aiSummary  Json?    // Structured data extracted by AI
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([clinicId])
+}
+
+model Vital {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  
+  weight      Float?   // in kg
+  height      Float?   // in cm
+  bpSystolic  Int?     // mmHg
+  bpDiastolic Int?     // mmHg
+  pulse       Int?     // bpm
+  temperature Float?   // Celsius/Fahrenheit
+  spo2        Int?     // %
+  
+  note        String?
+
+  visitId     String?  @db.ObjectId
+  visit       Visit?   @relation(fields: [visitId], references: [id])
+  
+  patientId   String   @db.ObjectId
+  patient     Patient  @relation(fields: [patientId], references: [id])
+  
+  clinicId    String   @db.ObjectId // For scoping
+
+  recordedAt  DateTime @default(now())
+}
+
+model Prescription {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  
+  visitId   String   @db.ObjectId
+  visit     Visit    @relation(fields: [visitId], references: [id])
+  
+  medications String // JSON string
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Invoice {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  
+  clinicId  String   @db.ObjectId
+  clinic    Clinic   @relation(fields: [clinicId], references: [id])
+  
+  visitId   String   @db.ObjectId
+  visit     Visit    @relation(fields: [visitId], references: [id])
+  
+  items     InvoiceItem[]
+  totalAmount Float
+  status      String @default("PENDING")
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([clinicId])
+  @@index([status])
+}
+
+type InvoiceItem {
+  id          String  @default(uuid())
+  description String
+  quantity    Int
+  unitPrice   Float
+  total       Float
+}
+
+model InventoryItem {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  
+  clinicId  String   @db.ObjectId
+  clinic    Clinic   @relation(fields: [clinicId], references: [id])
+  
+  name      String
+  quantity  Int
+  unit      String
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Expense {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  
+  clinicId  String   @db.ObjectId
+  clinic    Clinic   @relation(fields: [clinicId], references: [id])
+  
+  date      DateTime
+  category  String   // Rent, Salary, Equipment, Utilities
+  amount    Float
+  note      String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clinicId])
+  @@index([date])
+}
+
+model Attachment {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  
+  clinicId  String   @db.ObjectId
+  clinic    Clinic   @relation(fields: [clinicId], references: [id])
+  
+  patientId String   @db.ObjectId
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  
+  name      String
+  url       String   // Firebase Storage URL
+  type      String   // 'LAB_REPORT', 'XRAY', 'OTHER'
+  size      Int?     // bytes
+  
+  uploadedBy String? // User ID
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clinicId])
+  @@index([patientId])
+}
