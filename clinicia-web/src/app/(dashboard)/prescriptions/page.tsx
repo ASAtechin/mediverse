@@ -3,6 +3,9 @@ import { Search, Pill } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DownloadRxButton } from "@/components/prescription/DownloadRxButton";
 
+// Prevent static generation — this page needs runtime DB access
+export const dynamic = "force-dynamic";
+
 export default async function PrescriptionsPage() {
     const prescriptions = await prisma.prescription.findMany({
         orderBy: { createdAt: "desc" },
