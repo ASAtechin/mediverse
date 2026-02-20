@@ -170,7 +170,7 @@ function LoginPageContent() {
                     <div className="mt-8 text-center">
                         <p className="text-sm text-slate-500">
                             Don&apos;t have an account?{" "}
-                            <Link href="/register" className="text-blue-600 font-semibold hover:text-blue-700">
+                            <Link href="/register/signup" className="text-blue-600 font-semibold hover:text-blue-700">
                                 Register your practice
                             </Link>
                         </p>

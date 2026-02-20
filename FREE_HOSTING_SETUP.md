@@ -171,10 +171,10 @@ You can find these in each service's **Settings → Networking → Railway Domai
 curl https://clinicia-backend-prod.up.railway.app/health
 
 # Test web (should show landing page)
-curl https://clinicia-web-prod.up.railway.app/
+curl mediverse-web-production.up.railway.app
 
 # Test admin
-curl https://clinicia-admin-prod.up.railway.app/
+curl mediverse-web-production.up.railway.app
 ```
 
 If all return 200, you're live! 🎉
