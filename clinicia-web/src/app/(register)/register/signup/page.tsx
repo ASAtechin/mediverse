@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Activity, Shield, Star, Lock, CheckCircle2 } from "lucide-react";
+import { Activity, Shield, Star, Lock, CheckCircle2, Loader2 } from "lucide-react";
 import Link from "next/link";
 import type { PlanId, BillingCycle } from "@/lib/constants";
 
@@ -62,7 +62,7 @@ const steps = [
   { id: "plan", label: "Plan" },
 ];
 
-export default function SignupPage() {
+function SignupPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [currentStep, setCurrentStep] = useState(0);
@@ -264,5 +264,17 @@ export default function SignupPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    }>
+      <SignupPageContent />
+    </Suspense>
   );
 }
