@@ -1,5 +1,5 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
+import { getAuth, type Auth } from "firebase/auth";
 
 const firebaseConfig = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -10,8 +10,19 @@ const firebaseConfig = {
     appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const auth = getAuth(app);
+// Safe initialization: during build-time static generation, the env vars
+// may not be available. We only initialize Firebase when the API key exists.
+let app: FirebaseApp | undefined;
+let auth: Auth;
+
+if (firebaseConfig.apiKey) {
+    app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+    auth = getAuth(app);
+} else {
+    // Build-time: create stubs so imports don't crash during static generation.
+    // These will never be used at runtime — real Firebase kicks in when env vars load.
+    app = undefined as any;
+    auth = undefined as any;
+}
 
 export { auth, app };
