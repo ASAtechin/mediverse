@@ -17,18 +17,25 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED 1
 
 # ============================================================
-# CRITICAL: Provide dummy env vars for the build phase ONLY.
-# During Docker build, Railway env vars are NOT available.
-# Next.js needs these to pre-render static pages without crashing.
-# At runtime, Railway injects the REAL values automatically.
+# Accept build-time arguments from Railway
+# Railway will pass environment variables as build args
 # ============================================================
-ENV DATABASE_URL="mongodb+srv://dummy:dummy@dummy.mongodb.net/dummy"
-ENV NEXT_PUBLIC_FIREBASE_API_KEY="dummy-api-key"
-ENV NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="dummy.firebaseapp.com"
-ENV NEXT_PUBLIC_FIREBASE_PROJECT_ID="dummy"
-ENV NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="dummy.appspot.com"
-ENV NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="000000000000"
-ENV NEXT_PUBLIC_FIREBASE_APP_ID="1:000000000000:web:dummy"
+ARG DATABASE_URL
+ARG NEXT_PUBLIC_FIREBASE_API_KEY
+ARG NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+ARG NEXT_PUBLIC_FIREBASE_PROJECT_ID
+ARG NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+ARG NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+ARG NEXT_PUBLIC_FIREBASE_APP_ID
+
+# Convert ARGs to ENVs for the build process
+ENV DATABASE_URL=$DATABASE_URL
+ENV NEXT_PUBLIC_FIREBASE_API_KEY=$NEXT_PUBLIC_FIREBASE_API_KEY
+ENV NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+ENV NEXT_PUBLIC_FIREBASE_PROJECT_ID=$NEXT_PUBLIC_FIREBASE_PROJECT_ID
+ENV NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+ENV NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+ENV NEXT_PUBLIC_FIREBASE_APP_ID=$NEXT_PUBLIC_FIREBASE_APP_ID
 
 # Build the app (prisma generate is inside npm run build)
 RUN npm run build
