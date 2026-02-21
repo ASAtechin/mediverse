@@ -11,6 +11,17 @@ const firebaseConfig = {
     appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
+// Debug logging for Railway
+if (typeof window !== 'undefined') {
+    console.log('Firebase Config Debug:', {
+        apiKeyExists: !!firebaseConfig.apiKey,
+        apiKeyLength: firebaseConfig.apiKey?.length,
+        apiKeyPrefix: firebaseConfig.apiKey?.substring(0, 10),
+        projectId: firebaseConfig.projectId,
+        allKeys: Object.keys(firebaseConfig).filter(k => firebaseConfig[k as keyof typeof firebaseConfig])
+    });
+}
+
 // Safe initialization: during build-time static generation, the env vars
 // may not be available. We only initialize Firebase when the API key exists.
 let app: FirebaseApp | undefined;
