@@ -3,17 +3,23 @@ import { prisma } from '@/lib/db';
 import { verifyAuth } from '@/lib/auth-server';
 
 export async function GET() {
+    // Step 1: Authenticate (Authorization header preferred, cookie fallback)
+    let decodedToken;
     try {
-        // verifyAuth checks session cookie FIRST, then Authorization header as fallback
-        const decodedToken = await verifyAuth();
+        decodedToken = await verifyAuth();
+    } catch (error) {
+        console.error('[/api/auth/me] Auth failed:', error);
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
+    // Step 2: Fetch user from database (errors here are 500, not 401)
+    try {
         const user = await prisma.user.findUnique({
             where: { firebaseUid: decodedToken.uid },
             select: { id: true, clinicId: true, role: true, email: true },
         });
 
         if (!user) {
-            // 404 = authenticated but not registered (distinct from 401 = not authenticated)
             return NextResponse.json({ error: 'User not found in database' }, { status: 404 });
         }
 
@@ -25,7 +31,7 @@ export async function GET() {
             clinicId: user.clinicId,
         });
     } catch (error) {
-        console.error('[/api/auth/me] Auth failed:', error);
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        console.error('[/api/auth/me] Database error:', error);
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

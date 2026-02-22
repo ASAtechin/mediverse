@@ -3,17 +3,17 @@ import * as admin from "firebase-admin";
 import { initAdmin } from "./firebase-admin";
 
 export async function verifyAuth() {
-    // First, try to get token from session cookie (preferred method)
-    const cookieStore = await cookies();
-    let token = cookieStore.get("__session")?.value;
+    // 1. Prefer Authorization header — the client sends a FRESH token explicitly.
+    //    This avoids the bug where the __session cookie still holds a stale/expired
+    //    token while the client already refreshed it via getIdToken(true).
+    const headersList = await headers();
+    const authHeader = headersList.get("authorization");
+    let token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
-    // Fallback: check Authorization header (for backward compatibility)
+    // 2. Fallback: session cookie (used by server components that can't send headers)
     if (!token) {
-        const headersList = await headers();
-        const authHeader = headersList.get("authorization");
-        if (authHeader) {
-            token = authHeader.split("Bearer ")[1];
-        }
+        const cookieStore = await cookies();
+        token = cookieStore.get("__session")?.value ?? null;
     }
 
     if (!token) {
@@ -24,7 +24,6 @@ export async function verifyAuth() {
     await initAdmin();
 
     try {
-        // Verify the ID token
         const decodedToken = await admin.auth().verifyIdToken(token);
         return decodedToken;
     } catch (error) {

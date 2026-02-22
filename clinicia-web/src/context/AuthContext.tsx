@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useRouter, usePathname } from "next/navigation";
@@ -72,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [loading, setLoading] = useState(true);
     const router = useRouter();
     const pathname = usePathname();
+    const profileFetchFailures = useRef(0);
 
     /**
      * Fetch user profile from DB. If `token` is provided, it's sent as Authorization header
@@ -126,6 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (firebaseUser) {
                 // ── User IS authenticated in Firebase ──
+                profileFetchFailures.current = 0; // Reset on new auth event
 
                 // 1. Set session cookie FIRST and get back the EXACT token used
                 const token = await setSessionCookie(firebaseUser);
@@ -238,8 +240,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // ─── Re-verify profile if missing (post-signup) ─────────────────
     useEffect(() => {
         if (!loading && user && (!user.mongoId || !user.role)) {
+            // Stop retrying after 3 consecutive failures to prevent infinite 401 loops
+            if (profileFetchFailures.current >= 3) return;
             if (pathname && !pathname.startsWith('/signup') && !pathname.startsWith('/register/signup')) {
-                fetchUserProfile(user); // Result is handled internally (sets user state)
+                (async () => {
+                    // Get a fresh token explicitly — don't rely on stale cookie
+                    const token = await user.getIdToken().catch(() => null);
+                    const result = await fetchUserProfile(user, token);
+                    if (result === 'found') {
+                        profileFetchFailures.current = 0;
+                    } else {
+                        profileFetchFailures.current++;
+                    }
+                })();
             }
         }
     }, [pathname, user, loading, fetchUserProfile]);
