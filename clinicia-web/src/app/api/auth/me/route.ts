@@ -1,17 +1,28 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth-session';
+import { prisma } from '@/lib/db';
+import { verifyAuth } from '@/lib/auth-server';
 
 export async function GET() {
     try {
-        const session = await requireAuth();
+        // verifyAuth checks session cookie FIRST, then Authorization header as fallback
+        const decodedToken = await verifyAuth();
 
-        // Return user data from the session (already includes DB lookup)
+        const user = await prisma.user.findUnique({
+            where: { firebaseUid: decodedToken.uid },
+            select: { id: true, clinicId: true, role: true, email: true },
+        });
+
+        if (!user) {
+            // 404 = authenticated but not registered (distinct from 401 = not authenticated)
+            return NextResponse.json({ error: 'User not found in database' }, { status: 404 });
+        }
+
         return NextResponse.json({
-            id: session.userId,
-            firebaseUid: session.uid,
-            email: session.email,
-            role: session.role,
-            clinicId: session.clinicId
+            id: user.id,
+            firebaseUid: decodedToken.uid,
+            email: decodedToken.email || user.email,
+            role: user.role,
+            clinicId: user.clinicId,
         });
     } catch (error) {
         console.error('[/api/auth/me] Auth failed:', error);

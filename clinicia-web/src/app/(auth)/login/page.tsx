@@ -5,7 +5,6 @@ import { signInWithEmailAndPassword, GoogleAuthProvider, OAuthProvider, signInWi
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Activity, ArrowRight, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -18,8 +17,6 @@ function LoginPageContent() {
     const [googleLoading, setGoogleLoading] = useState(false);
     const [appleLoading, setAppleLoading] = useState(false);
     const [error, setError] = useState("");
-    const router = useRouter();
-    const searchParams = useSearchParams();
     const { user, loading: authLoading } = useAuth();
 
     // AuthContext handles redirect if user is already logged in.
@@ -39,9 +36,8 @@ function LoginPageContent() {
 
         try {
             await signInWithEmailAndPassword(auth, email, password);
-            // AuthContext onAuthStateChanged will fire -> set cookie -> redirect to /
-            const redirect = searchParams.get("redirect") || "/dashboard";
-            router.push(redirect);
+            // AuthContext onAuthStateChanged will fire → set cookie → redirect
+            // Do NOT router.push here — let AuthContext handle it after cookie is set
         } catch (err: any) {
             if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password") {
                 setError("Invalid email or password. Please try again.");
@@ -52,9 +48,9 @@ function LoginPageContent() {
             } else {
                 setError("Sign in failed. Please try again.");
             }
-        } finally {
             setLoading(false);
         }
+        // Don't setLoading(false) on success — keep spinner until AuthContext redirects
     };
 
     const handleGoogleLogin = async () => {
@@ -64,9 +60,8 @@ function LoginPageContent() {
         try {
             const provider = new GoogleAuthProvider();
             await signInWithPopup(auth, provider);
-            // AuthContext will handle redirect
-            const redirect = searchParams.get("redirect") || "/dashboard";
-            router.push(redirect);
+            // AuthContext onAuthStateChanged will fire → set cookie → redirect
+            // Do NOT router.push here — it races with cookie creation
         } catch (err: any) {
             console.error("[GoogleSignIn] Error:", err.code, err.message);
             if (err.code === "auth/popup-closed-by-user") {
@@ -80,11 +75,11 @@ function LoginPageContent() {
             } else if (err.code === "auth/account-exists-with-different-credential") {
                 setError("An account already exists with this email using a different sign-in method.");
             } else {
-                setError(`Google sign-in failed. Please try again.`);
+                setError("Google sign-in failed. Please try again.");
             }
-        } finally {
             setGoogleLoading(false);
         }
+        // Don't setGoogleLoading(false) on success — keep spinner until AuthContext redirects
     };
 
     const handleAppleLogin = async () => {
@@ -96,9 +91,8 @@ function LoginPageContent() {
             provider.addScope("email");
             provider.addScope("name");
             await signInWithPopup(auth, provider);
-            // AuthContext will handle redirect
-            const redirect = searchParams.get("redirect") || "/dashboard";
-            router.push(redirect);
+            // AuthContext onAuthStateChanged will fire → set cookie → redirect
+            // Do NOT router.push here — it races with cookie creation
         } catch (err: any) {
             console.error("[AppleSignIn] Error:", err.code, err.message);
             if (err.code === "auth/popup-closed-by-user" || err.code === "auth/cancelled-popup-request") {
@@ -108,11 +102,11 @@ function LoginPageContent() {
             } else if (err.code === "auth/account-exists-with-different-credential") {
                 setError("An account already exists with this email using a different sign-in method.");
             } else {
-                setError(`Apple sign-in failed. Please try again.`);
+                setError("Apple sign-in failed. Please try again.");
             }
-        } finally {
             setAppleLoading(false);
         }
+        // Don't setAppleLoading(false) on success — keep spinner until AuthContext redirects
     };
 
     return (

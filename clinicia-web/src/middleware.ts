@@ -50,6 +50,8 @@ function isSessionTokenFresh(token: string): boolean {
 function setSecurityHeaders(response: NextResponse) {
     const isDev = process.env.NODE_ENV === 'development';
 
+    // Allow Firebase/Google/Apple auth popups to close themselves after sign-in
+    response.headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups')
     response.headers.set('X-Frame-Options', 'DENY')
     response.headers.set('X-Content-Type-Options', 'nosniff')
     response.headers.set('X-XSS-Protection', '1; mode=block')

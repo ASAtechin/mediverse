@@ -69,11 +69,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const pathname = usePathname();
 
-    const fetchUserProfile = useCallback(async (firebaseUser: FirebaseUser): Promise<boolean> => {
+    const fetchUserProfile = useCallback(async (firebaseUser: FirebaseUser): Promise<'found' | 'not-registered' | 'error'> => {
         try {
-            // Session cookie is already set — just call the endpoint
+            // Send token BOTH as Authorization header AND via cookie (belt-and-suspenders)
+            // Cookie may not be available yet due to browser timing after setSessionCookie
+            const token = await firebaseUser.getIdToken();
             const res = await fetch('/api/auth/me', {
-                credentials: 'include', // Ensure cookies are sent
+                headers: { Authorization: `Bearer ${token}` },
+                credentials: 'include',
             });
             if (res.ok) {
                 const dbUser = await res.json();
@@ -83,13 +86,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     { role: dbUser.role, clinicId: dbUser.clinicId, mongoId: dbUser.id }
                 );
                 setUser(appUser);
-                return true;
+                return 'found';
+            }
+            if (res.status === 404) {
+                // Authenticated in Firebase but no DB record (not registered)
+                console.warn("[AUTH] Firebase user exists but not registered in database");
+                return 'not-registered';
             }
             console.error("[AUTH] Failed to fetch user profile:", res.status, res.statusText);
-            return false;
+            return 'error';
         } catch (e) {
             console.error("[AUTH] Failed to fetch user profile", e);
-            return false;
+            return 'error';
         }
     }, []);
 
@@ -114,23 +122,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 await setSessionCookie(firebaseUser);
 
                 // 2. Try to load DB profile
-                const found = await fetchUserProfile(firebaseUser);
+                const profileResult = await fetchUserProfile(firebaseUser);
 
-                if (!found) {
-                    // Firebase user but no DB record
+                if (profileResult !== 'found') {
+                    // Firebase user but no DB record or fetch error
                     const isSignupFlow = currentPath.startsWith('/signup') ||
                                          currentPath.startsWith('/register');
                     if (isSignupFlow) {
                         // On signup — allow (DB record will be created at end of wizard)
                         setUser(firebaseUser as AppUser);
-                    } else {
-                        // Orphaned Firebase user — force full logout
+                    } else if (profileResult === 'not-registered') {
+                        // User is authenticated in Firebase but never completed registration.
+                        // Sign them out and redirect to registration with a helpful message.
                         await clearSessionCookie();
                         await signOut(auth);
                         setUser(null);
-                        router.replace('/login');
+                        router.replace('/register/signup?error=not-registered');
                         setLoading(false);
                         return;
+                    } else {
+                        // Transient error (network, server issue) — retry once then give up
+                        console.warn('[AUTH] Profile fetch failed, retrying once...');
+                        await new Promise(r => setTimeout(r, 1000));
+                        const retry = await fetchUserProfile(firebaseUser);
+                        if (retry !== 'found') {
+                            await clearSessionCookie();
+                            await signOut(auth);
+                            setUser(null);
+                            router.replace('/login?error=session-expired');
+                            setLoading(false);
+                            return;
+                        }
                     }
                 }
 
@@ -190,7 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         if (!loading && user && (!user.mongoId || !user.role)) {
             if (pathname && !pathname.startsWith('/signup') && !pathname.startsWith('/register')) {
-                fetchUserProfile(user);
+                fetchUserProfile(user); // Result is handled internally (sets user state)
             }
         }
     }, [pathname, user, loading, fetchUserProfile]);
