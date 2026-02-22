@@ -28,7 +28,7 @@ async function getSocket(): Promise<Socket> {
         });
 
         globalSocket.on("disconnect", () => {
-            // Socket disconnected
+            // Will reconnect automatically via socket.io reconnection config
         });
 
         globalSocket.on("connect_error", (error) => {
@@ -54,12 +54,11 @@ if (typeof window !== 'undefined') {
     });
 }
 
-// Hook for tenant/clinic updates with real-time refresh
-export function useTenantUpdates(onUpdate: () => void) {
+// Generic hook for real-time updates on any event
+function useSocketUpdates(eventName: string, onUpdate: () => void, roomJoin?: string) {
     const [isConnected, setIsConnected] = useState(false);
     const onUpdateRef = useRef(onUpdate);
     
-    // Keep the callback ref updated
     useEffect(() => {
         onUpdateRef.current = onUpdate;
     }, [onUpdate]);
@@ -69,143 +68,49 @@ export function useTenantUpdates(onUpdate: () => void) {
 
         const handleConnect = () => {
             setIsConnected(true);
-            socket?.emit("join-admin");
+            if (roomJoin) socket?.emit(roomJoin);
         };
-
-        const handleDisconnect = () => {
-            setIsConnected(false);
-        };
-
-        const handleTenantUpdate = (data: any) => {
-            onUpdateRef.current();
-        };
+        const handleDisconnect = () => setIsConnected(false);
+        const handleUpdate = () => onUpdateRef.current();
 
         getSocket().then((s) => {
             socket = s;
             setIsConnected(s.connected);
             s.on("connect", handleConnect);
             s.on("disconnect", handleDisconnect);
-            s.on("tenant-updated", handleTenantUpdate);
+            s.on(eventName, handleUpdate);
 
-            if (s.connected) {
-                s.emit("join-admin");
+            if (s.connected && roomJoin) {
+                s.emit(roomJoin);
             }
         });
 
         return () => {
             socket?.off("connect", handleConnect);
             socket?.off("disconnect", handleDisconnect);
-            socket?.off("tenant-updated", handleTenantUpdate);
+            socket?.off(eventName, handleUpdate);
         };
-    }, []);
+    }, [eventName, roomJoin]);
 
     return { isConnected };
+}
+
+// Hook for tenant/clinic updates with real-time refresh
+export function useTenantUpdates(onUpdate: () => void) {
+    return useSocketUpdates("tenant-updated", onUpdate, "join-admin");
 }
 
 // Hook for patient updates
 export function usePatientUpdates(onUpdate: () => void) {
-    const [isConnected, setIsConnected] = useState(false);
-    const onUpdateRef = useRef(onUpdate);
-    
-    useEffect(() => {
-        onUpdateRef.current = onUpdate;
-    }, [onUpdate]);
-
-    useEffect(() => {
-        let socket: Socket | null = null;
-
-        const handleConnect = () => setIsConnected(true);
-        const handleDisconnect = () => setIsConnected(false);
-        const handlePatientUpdate = (data: any) => {
-            onUpdateRef.current();
-        };
-
-        getSocket().then((s) => {
-            socket = s;
-            setIsConnected(s.connected);
-            s.on("connect", handleConnect);
-            s.on("disconnect", handleDisconnect);
-            s.on("patient-updated", handlePatientUpdate);
-        });
-
-        return () => {
-            socket?.off("connect", handleConnect);
-            socket?.off("disconnect", handleDisconnect);
-            socket?.off("patient-updated", handlePatientUpdate);
-        };
-    }, []);
-
-    return { isConnected };
+    return useSocketUpdates("patient-updated", onUpdate);
 }
 
 // Hook for appointment updates
 export function useAppointmentUpdates(onUpdate: () => void) {
-    const [isConnected, setIsConnected] = useState(false);
-    const onUpdateRef = useRef(onUpdate);
-    
-    useEffect(() => {
-        onUpdateRef.current = onUpdate;
-    }, [onUpdate]);
-
-    useEffect(() => {
-        let socket: Socket | null = null;
-
-        const handleConnect = () => setIsConnected(true);
-        const handleDisconnect = () => setIsConnected(false);
-        const handleAppointmentUpdate = (data: any) => {
-            onUpdateRef.current();
-        };
-
-        getSocket().then((s) => {
-            socket = s;
-            setIsConnected(s.connected);
-            s.on("connect", handleConnect);
-            s.on("disconnect", handleDisconnect);
-            s.on("appointment-updated", handleAppointmentUpdate);
-        });
-
-        return () => {
-            socket?.off("connect", handleConnect);
-            socket?.off("disconnect", handleDisconnect);
-            socket?.off("appointment-updated", handleAppointmentUpdate);
-        };
-    }, []);
-
-    return { isConnected };
+    return useSocketUpdates("appointment-updated", onUpdate);
 }
 
 // Hook for user updates
 export function useUserUpdates(onUpdate: () => void) {
-    const [isConnected, setIsConnected] = useState(false);
-    const onUpdateRef = useRef(onUpdate);
-    
-    useEffect(() => {
-        onUpdateRef.current = onUpdate;
-    }, [onUpdate]);
-
-    useEffect(() => {
-        let socket: Socket | null = null;
-
-        const handleConnect = () => setIsConnected(true);
-        const handleDisconnect = () => setIsConnected(false);
-        const handleUserUpdate = (data: any) => {
-            onUpdateRef.current();
-        };
-
-        getSocket().then((s) => {
-            socket = s;
-            setIsConnected(s.connected);
-            s.on("connect", handleConnect);
-            s.on("disconnect", handleDisconnect);
-            s.on("user-updated", handleUserUpdate);
-        });
-
-        return () => {
-            socket?.off("connect", handleConnect);
-            socket?.off("disconnect", handleDisconnect);
-            socket?.off("user-updated", handleUserUpdate);
-        };
-    }, []);
-
-    return { isConnected };
+    return useSocketUpdates("user-updated", onUpdate);
 }

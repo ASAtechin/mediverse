@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Building2, Calendar, Mail } from "lucide-react";
+import { Building2, Mail } from "lucide-react";
 import Link from "next/link";
 
 interface Clinic {

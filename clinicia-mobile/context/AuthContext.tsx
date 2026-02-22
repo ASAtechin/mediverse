@@ -35,34 +35,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        // Set up request interceptor to always use fresh token
-        const interceptorId = api.interceptors.request.use(async (config) => {
-            const currentUser = auth.currentUser;
-            if (currentUser) {
-                const token = await currentUser.getIdToken(); // auto-refreshes if expired
-                config.headers.Authorization = `Bearer ${token}`;
-            }
-            return config;
-        });
-
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {
-                // Get Token for initial setup
-                const token = await firebaseUser.getIdToken();
-                // Set API Header (will be refreshed by interceptor on each request)
-                api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-
                 let userId = firebaseUser.uid;
 
                 try {
                     // Fetch Patient Profile to get real MongoDB ID
                     const { data: profile } = await api.get('/patient/profile');
                     if (profile && profile.id) {
-                        console.log("Found Patient Profile:", profile.id);
                         userId = profile.id;
                     }
-                } catch (err) {
-                    console.log("Could not fetch patient profile, using Firebase UID");
+                } catch {
+                    // Patient profile not found — using Firebase UID as fallback
                 }
 
                 setUser({
@@ -72,7 +56,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                     role: 'PATIENT' // Default for mobile app
                 });
             } else {
-                delete api.defaults.headers.common['Authorization'];
                 setUser(null);
             }
             setIsLoading(false);
@@ -80,7 +63,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         return () => {
             unsubscribe();
-            api.interceptors.request.eject(interceptorId);
         };
     }, []);
 
@@ -90,9 +72,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             await signInWithEmailAndPassword(auth, email, password);
             router.replace('/(tabs)');
         } catch (error: any) {
-            console.error(error);
-            const msg = error.message || 'Login Failed';
-            Alert.alert('Login Failed', msg);
+            const code = error?.code || '';
+            const messages: Record<string, string> = {
+                'auth/invalid-email': 'Please enter a valid email address.',
+                'auth/user-not-found': 'No account found with this email.',
+                'auth/wrong-password': 'Incorrect password. Please try again.',
+                'auth/too-many-requests': 'Too many attempts. Please try again later.',
+                'auth/invalid-credential': 'Invalid email or password.',
+            };
+            Alert.alert('Login Failed', messages[code] || 'Something went wrong. Please try again.');
         } finally {
             setIsLoading(false);
         }
@@ -102,8 +90,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         try {
             await signOut(auth);
             router.replace('/login');
-        } catch (error) {
-            console.error(error);
+        } catch {
+            // Logout failed silently — user will be redirected regardless
         }
     };
 

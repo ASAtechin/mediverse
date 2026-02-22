@@ -20,7 +20,6 @@ interface RegisterClinicInput {
 }
 
 export async function registerClinic(input: RegisterClinicInput) {
-  console.log("[REGISTER] Starting registration for:", input.email, "plan:", input.plan);
   try {
     // 1. Check if user already exists
     const existingUser = await prisma.user.findUnique({
@@ -28,7 +27,6 @@ export async function registerClinic(input: RegisterClinicInput) {
     });
 
     if (existingUser) {
-      console.log("[REGISTER] Existing user found by email:", existingUser.id);
       // Link firebase UID if the user already exists
       await prisma.user.update({
         where: { id: existingUser.id },
@@ -43,7 +41,6 @@ export async function registerClinic(input: RegisterClinicInput) {
     });
 
     if (existingByUid) {
-      console.log("[REGISTER] Existing user found by UID:", existingByUid.id);
       return { success: true, userId: existingByUid.id, clinicId: existingByUid.clinicId, existing: true };
     }
 

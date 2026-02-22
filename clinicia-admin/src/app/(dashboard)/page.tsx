@@ -90,13 +90,6 @@ export default function Dashboard() {
           icon={Users}
           color="rose"
         />
-        {/* <StatsCard
-          title="Active Subscriptions"
-          value={stats?.activeSubscriptions || 0}
-          icon={Activity}
-          color="emerald"
-          trend={{ value: 5, label: "new this week" }}
-        /> */}
         <StatsCard
           title="Monthly Revenue"
           value={`₹${stats?.totalRevenue?.toLocaleString() || 0}`}
@@ -112,7 +105,6 @@ export default function Dashboard() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, delay: 0.2 }}
       >
-        {/* We can add more charts here later */}
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-6 text-white shadow-xl relative overflow-hidden">
           <div className="relative z-10">
             <h3 className="text-slate-300 font-medium mb-1">System Health</h3>

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/AuthContext";
 import { getSettingsData, updateProfile, updateClinic } from "@/actions/settings";
-import { toast } from "sonner"; // Assuming sonner is installed, or we use basic alert/toast
+import { toast } from "sonner";
 
 export default function SettingsPage() {
     const { user } = useAuth();
@@ -55,10 +55,9 @@ export default function SettingsPage() {
 
         const result = await updateProfile(formData);
         if (result.success) {
-            // toast.success("Profile updated");
-            alert("Profile updated successfully");
+            toast.success("Profile updated successfully");
         } else {
-            alert("Failed to update profile: " + result.error);
+            toast.error("Failed to update profile: " + result.error);
         }
         setSaving(false);
     };
@@ -74,9 +73,9 @@ export default function SettingsPage() {
 
         const result = await updateClinic(formData);
         if (result.success) {
-            alert("Clinic details updated successfully");
+            toast.success("Clinic details updated successfully");
         } else {
-            alert("Failed to update clinic: " + result.error);
+            toast.error("Failed to update clinic: " + result.error);
         }
         setSaving(false);
     };

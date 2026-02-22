@@ -4,7 +4,7 @@ import { Text, Card, Button, Avatar, useTheme, ActivityIndicator } from 'react-n
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
 import { format } from 'date-fns';
 
 // Define types

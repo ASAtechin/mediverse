@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, ScrollView, FlatList } from 'react-native';
+import { StyleSheet, View, ScrollView } from 'react-native';
 import { Text, Card, List, ActivityIndicator, Divider } from 'react-native-paper';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';

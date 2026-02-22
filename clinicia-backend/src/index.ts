@@ -218,6 +218,7 @@ async function setupChangeStreams() {
         const cleanUrl = mongoUrl.replace(/\?.*$/, "");
         const client = new MongoClient(cleanUrl);
         await client.connect();
+        changeStreamClient = client;
         
         const dbName = cleanUrl.split("/").pop() || "clinicia";
         const db = client.db(dbName);
@@ -239,12 +240,38 @@ async function setupChangeStreams() {
 // Graceful crash handlers
 process.on('unhandledRejection', (reason, promise) => {
     logger.fatal({ err: reason }, 'Unhandled Promise Rejection');
+    process.exit(1);
 });
 
 process.on('uncaughtException', (error) => {
     logger.fatal({ err: error }, 'Uncaught Exception — shutting down');
     process.exit(1);
 });
+
+// Graceful shutdown
+async function shutdown(signal: string) {
+    logger.info({ signal }, 'Received shutdown signal, cleaning up...');
+    try {
+        if (changeStreamClient) {
+            await changeStreamClient.close();
+            logger.info('MongoDB change stream client closed');
+        }
+        await prisma.$disconnect();
+        logger.info('Prisma disconnected');
+        httpServer.close(() => {
+            logger.info('HTTP server closed');
+            process.exit(0);
+        });
+        // Force exit after 10s if graceful shutdown hangs
+        setTimeout(() => process.exit(1), 10_000);
+    } catch (err) {
+        logger.error({ err }, 'Error during shutdown');
+        process.exit(1);
+    }
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 // Start Server
 httpServer.listen(port, () => {

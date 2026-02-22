@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { Search, Pill } from "lucide-react";
+import { Pill } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DownloadRxButton } from "@/components/prescription/DownloadRxButton";
 
