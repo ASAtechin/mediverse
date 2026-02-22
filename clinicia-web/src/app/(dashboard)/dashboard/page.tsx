@@ -22,33 +22,38 @@ export default function Home() {
   const { user } = useAuth();
   const router = useRouter();
 
+  // ── ALL hooks MUST be called before any conditional return ──
+  const { data: dashboardData } = useSWR(
+    user?.clinicId ? ['dashboard-stats', user.clinicId] : null,
+    async () => {
+      const result = await getDashboardStats(user?.clinicId || undefined);
+      if (result.success && result.data) return result.data;
+      return null;
+    },
+    { refreshInterval: 5000, revalidateOnFocus: true }
+  );
+
+  const { data: chartResult } = useSWR(
+    user?.clinicId ? ['weekly-chart', user.clinicId] : null,
+    async () => getWeeklyChartData(user?.clinicId || undefined),
+    { refreshInterval: 30000, revalidateOnFocus: true }
+  );
+  const chartData = chartResult?.data || [];
+
+  const { data: scheduleResult } = useSWR(
+    user?.clinicId ? ['upcoming-schedule', user.clinicId] : null,
+    async () => getUpcomingSchedule(user?.clinicId || undefined),
+    { refreshInterval: 10000, revalidateOnFocus: true }
+  );
+  const upcomingAppointments = scheduleResult?.data || [];
+
+  // ── Conditional redirects AFTER hooks ──
   if (user?.role === 'SUPER_ADMIN') {
-    // Redirect to the separate Admin Portal application
     if (typeof window !== 'undefined') {
       window.location.href = process.env.NEXT_PUBLIC_ADMIN_URL || '/admin';
     }
     return null;
   }
-
-  const { data: dashboardData } = useSWR('dashboard-stats', async () => {
-    const result = await getDashboardStats(user?.clinicId || undefined);
-    if (result.success && result.data) {
-      return result.data;
-    }
-    return null;
-  }, { refreshInterval: 5000 });
-
-  // Real weekly chart data
-  const { data: chartResult } = useSWR('weekly-chart', async () => {
-    return getWeeklyChartData(user?.clinicId || undefined);
-  }, { refreshInterval: 60000 });
-  const chartData = chartResult?.data || [];
-
-  // Real upcoming schedule
-  const { data: scheduleResult } = useSWR('upcoming-schedule', async () => {
-    return getUpcomingSchedule(user?.clinicId || undefined);
-  }, { refreshInterval: 15000 });
-  const upcomingAppointments = scheduleResult?.data || [];
 
   const stats = [
     {

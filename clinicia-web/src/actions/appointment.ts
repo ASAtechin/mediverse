@@ -4,6 +4,77 @@ import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { requireAuth } from "@/lib/auth-session";
 
+// ─── GET APPOINTMENTS ────────────────────────────────────────────────────────
+
+export async function getAppointments(clinicId?: string) {
+    const session = await requireAuth();
+
+    const effectiveClinicId =
+        session.role === "SUPER_ADMIN" ? clinicId : session.clinicId;
+
+    const clinicFilter = effectiveClinicId ? { clinicId: effectiveClinicId } : {};
+
+    const appointments = await prisma.appointment.findMany({
+        orderBy: { date: "asc" },
+        include: { patient: true, doctor: true },
+        where: {
+            ...clinicFilter,
+            date: {
+                gte: new Date(new Date().setHours(0, 0, 0, 0)),
+            },
+        },
+    });
+
+    // Serialize dates for client components
+    return appointments.map((a) => ({
+        id: a.id,
+        date: a.date.toISOString(),
+        status: a.status,
+        type: a.type,
+        notes: a.notes,
+        tokenNumber: a.tokenNumber,
+        patient: {
+            id: a.patient.id,
+            firstName: a.patient.firstName,
+            lastName: a.patient.lastName,
+        },
+        doctor: a.doctor
+            ? { id: a.doctor.id, name: a.doctor.name }
+            : null,
+    }));
+}
+
+// ─── GET FORM DATA (patients + doctors for dropdowns) ────────────────────────
+
+export async function getAppointmentFormData(clinicId?: string) {
+    const session = await requireAuth();
+
+    const effectiveClinicId =
+        session.role === "SUPER_ADMIN" ? clinicId : session.clinicId;
+
+    const clinicFilter = effectiveClinicId ? { clinicId: effectiveClinicId } : {};
+
+    const [patients, doctors] = await Promise.all([
+        prisma.patient.findMany({
+            where: clinicFilter,
+            select: { id: true, firstName: true, lastName: true },
+        }),
+        prisma.user.findMany({
+            where: { role: "DOCTOR", ...clinicFilter },
+            select: { id: true, name: true },
+        }),
+    ]);
+
+    return {
+        patients,
+        doctors,
+        currentUserId: session.userId,
+        currentUserRole: session.role,
+    };
+}
+
+// ─── CREATE APPOINTMENT ──────────────────────────────────────────────────────
+
 export async function createAppointment(formData: FormData) {
     const session = await requireAuth();
 
