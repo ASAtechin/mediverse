@@ -50,7 +50,12 @@ export default async function AppointmentsPage({
                 <h1 className="text-3xl font-bold tracking-tight text-slate-900">
                     Appointments
                 </h1>
-                <BookAppointmentDialog patients={patients} doctors={doctors} />
+                <BookAppointmentDialog
+                    patients={patients}
+                    doctors={doctors}
+                    currentUserId={session.userId}
+                    currentUserRole={session.role}
+                />
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border p-6">
@@ -77,14 +82,20 @@ export default async function AppointmentsPage({
                                         </a>
                                     </h3>
                                     <p className="text-sm text-slate-500">
-                                        with {appt.doctor.name} • {appt.type}
+                                        {appt.doctor?.name ? `with ${appt.doctor.name}` : "No doctor assigned"} • {appt.type}
                                     </p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-6">
                                 <div className="text-right">
                                     <p className="font-medium text-slate-900">{appt.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                                    <p className={cn("text-xs font-medium uppercase", appt.status === 'SCHEDULED' ? "text-blue-600" : "text-green-600")}>
+                                    <p className={cn(
+                                        "text-xs font-medium uppercase",
+                                        appt.status === 'SCHEDULED' ? "text-blue-600" :
+                                        appt.status === 'CANCELLED' ? "text-red-600" :
+                                        appt.status === 'COMPLETED' ? "text-green-600" :
+                                        "text-amber-600"
+                                    )}>
                                         {appt.status}
                                     </p>
                                 </div>

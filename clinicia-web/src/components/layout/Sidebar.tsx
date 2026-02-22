@@ -15,7 +15,8 @@ import {
     ChevronLeft,
     LogOut,
     Shield, // Added
-    DollarSign
+    DollarSign,
+    Stethoscope,
 } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -24,6 +25,7 @@ import { useAuth } from "@/context/AuthContext";
 const navItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Patients", href: "/patients", icon: Users },
+    { name: "Doctors", href: "/doctors", icon: Stethoscope },
     { name: "Appointments", href: "/appointments", icon: Calendar },
     { name: "Clinical Records", href: "/emr", icon: FileText },
     { name: "Prescriptions", href: "/prescriptions", icon: Pill },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -13,20 +13,34 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus } from "lucide-react";
+import { Plus, Loader2 } from "lucide-react";
 import { createPatient } from "@/actions/patient";
 
 interface AddPatientDialogProps {
     clinicId?: string;
+    onSuccess?: () => void;
 }
 
-export function AddPatientDialog({ clinicId }: AddPatientDialogProps) {
+export function AddPatientDialog({ clinicId, onSuccess }: AddPatientDialogProps) {
     const [open, setOpen] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const formRef = useRef<HTMLFormElement>(null);
 
     async function handleSubmit(formData: FormData) {
-        if (!clinicId) return; // Should not happen if button is disabled, but safety check
-        await createPatient(formData, clinicId);
-        setOpen(false);
+        if (!clinicId) return;
+        setSubmitting(true);
+        setError(null);
+        try {
+            await createPatient(formData, clinicId);
+            formRef.current?.reset();
+            setOpen(false);
+            onSuccess?.();
+        } catch (err: any) {
+            setError(err.message || "Failed to create patient");
+        } finally {
+            setSubmitting(false);
+        }
     }
 
     return (
@@ -37,13 +51,18 @@ export function AddPatientDialog({ clinicId }: AddPatientDialogProps) {
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
-                <form action={handleSubmit}>
+                <form ref={formRef} action={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle>Add New Patient</DialogTitle>
                         <DialogDescription>
                             Enter the patient's basic details here. Click save when you're done.
                         </DialogDescription>
                     </DialogHeader>
+                    {error && (
+                        <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md border border-red-200 mt-2">
+                            {error}
+                        </div>
+                    )}
                     <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="grid gap-2">
@@ -93,7 +112,10 @@ export function AddPatientDialog({ clinicId }: AddPatientDialogProps) {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button type="submit">Save Patient</Button>
+                        <Button type="submit" disabled={submitting}>
+                            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {submitting ? "Saving..." : "Save Patient"}
+                        </Button>
                     </DialogFooter>
                 </form>
             </DialogContent>

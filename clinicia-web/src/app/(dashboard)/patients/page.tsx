@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Search, MoreHorizontal, Loader2 } from "lucide-react";
 import Link from "next/link";
@@ -12,28 +12,41 @@ export default function PatientsPage() {
     const { user, loading: authLoading } = useAuth();
     const [patients, setPatients] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState("");
+
+    const fetchPatients = useCallback(async () => {
+        if (!user?.clinicId) return;
+        setLoading(true);
+        try {
+            const data = await getPatients(user.clinicId);
+            setPatients(data);
+        } catch (error) {
+            console.error("Failed to fetch patients", error);
+        } finally {
+            setLoading(false);
+        }
+    }, [user?.clinicId]);
 
     useEffect(() => {
-        const fetchPatients = async () => {
+        if (!authLoading) {
             if (user?.clinicId) {
-                try {
-                    const data = await getPatients(user.clinicId);
-                    setPatients(data);
-                } catch (error) {
-                    console.error("Failed to fetch patients", error);
-                } finally {
-                    setLoading(false);
-                }
-            } else if (!authLoading) {
-                // If auth loaded but no clinicId (e.g. Super Admin or error), stop loading
+                fetchPatients();
+            } else {
                 setLoading(false);
             }
-        };
-
-        if (!authLoading) {
-            fetchPatients();
         }
-    }, [user, authLoading]);
+    }, [user, authLoading, fetchPatients]);
+
+    const filteredPatients = patients.filter((p) => {
+        if (!searchQuery) return true;
+        const q = searchQuery.toLowerCase();
+        return (
+            p.firstName?.toLowerCase().includes(q) ||
+            p.lastName?.toLowerCase().includes(q) ||
+            p.phone?.includes(q) ||
+            p.email?.toLowerCase().includes(q)
+        );
+    });
 
     if (authLoading || (loading && user)) {
         return (
@@ -49,7 +62,7 @@ export default function PatientsPage() {
                 <h1 className="text-3xl font-bold tracking-tight text-slate-900">
                     Patients
                 </h1>
-                <AddPatientDialog clinicId={user?.clinicId} />
+                <AddPatientDialog clinicId={user?.clinicId} onSuccess={fetchPatients} />
             </div>
 
             <div className="flex items-center space-x-2 bg-white p-2 rounded-lg border shadow-sm max-w-sm">
@@ -58,6 +71,8 @@ export default function PatientsPage() {
                     type="text"
                     placeholder="Search patients..."
                     className="flex-1 outline-none text-sm"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                 />
             </div>
 
@@ -73,7 +88,7 @@ export default function PatientsPage() {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {patients.map((patient) => (
+                        {filteredPatients.map((patient) => (
                             <tr key={patient.id} className="hover:bg-slate-50 transition-colors">
                                 <td className="px-6 py-4">
                                     <Link href={`/patients/${patient.id}`} className="font-medium text-slate-900 hover:text-primary">
@@ -98,7 +113,7 @@ export default function PatientsPage() {
                                 </td>
                             </tr>
                         ))}
-                        {patients.length === 0 && (
+                        {filteredPatients.length === 0 && (
                             <tr>
                                 <td colSpan={5} className="text-center py-10 text-slate-500">
                                     No patients found. Add one to get started.

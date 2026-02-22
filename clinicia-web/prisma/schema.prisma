@@ -69,8 +69,11 @@ model User {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   email     String   @unique
   name      String?
+  phone     String?
   role      String   @default("STAFF") // DOCTOR, ADMIN, STAFF
   firebaseUid String @unique // Link to Firebase Auth
+  specialization String? // For doctors: Cardiology, Dermatology, etc.
+  qualification  String? // MBBS, MD, etc.
   
   clinicId  String   @db.ObjectId
   clinic    Clinic   @relation(fields: [clinicId], references: [id])
