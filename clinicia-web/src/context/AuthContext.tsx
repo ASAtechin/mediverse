@@ -71,9 +71,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const fetchUserProfile = useCallback(async (firebaseUser: FirebaseUser): Promise<boolean> => {
         try {
-            const token = await firebaseUser.getIdToken();
+            // Session cookie is already set — just call the endpoint
             const res = await fetch('/api/auth/me', {
-                headers: { Authorization: `Bearer ${token}` }
+                credentials: 'include', // Ensure cookies are sent
             });
             if (res.ok) {
                 const dbUser = await res.json();
@@ -85,6 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setUser(appUser);
                 return true;
             }
+            console.error("[AUTH] Failed to fetch user profile:", res.status, res.statusText);
             return false;
         } catch (e) {
             console.error("[AUTH] Failed to fetch user profile", e);

@@ -1,21 +1,20 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { verifyAuth } from '@/lib/auth-server';
+import { requireAuth } from '@/lib/auth-session';
 
 export async function GET() {
     try {
-        const decodedToken = await verifyAuth();
+        const session = await requireAuth();
 
-        const user = await prisma.user.findUnique({
-            where: { firebaseUid: decodedToken.uid }
+        // Return user data from the session (already includes DB lookup)
+        return NextResponse.json({
+            id: session.userId,
+            firebaseUid: session.uid,
+            email: session.email,
+            role: session.role,
+            clinicId: session.clinicId
         });
-
-        if (!user) {
-            return NextResponse.json({ error: 'User not found' }, { status: 404 });
-        }
-
-        return NextResponse.json(user);
     } catch (error) {
+        console.error('[/api/auth/me] Auth failed:', error);
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 }
