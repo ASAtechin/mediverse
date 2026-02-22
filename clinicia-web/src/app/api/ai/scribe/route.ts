@@ -1,4 +1,7 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import * as admin from 'firebase-admin';
+import { initAdmin } from '@/lib/firebase-admin';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -16,6 +19,19 @@ Do NOT include markdown code blocks. Return valid JSON only.`;
 
 export async function POST(req: Request) {
     try {
+        // Auth check
+        const cookieStore = await cookies();
+        const sessionToken = cookieStore.get("__session")?.value;
+        if (!sessionToken) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+        await initAdmin();
+        try {
+            await admin.auth().verifyIdToken(sessionToken);
+        } catch {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
         const formData = await req.formData();
         const audioFile = formData.get('audio') as Blob;
 

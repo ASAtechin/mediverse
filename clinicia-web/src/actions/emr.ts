@@ -13,6 +13,14 @@ export async function saveConsultation(formData: FormData) {
     const diagnosis = formData.get("diagnosis") as string;
     const notes = formData.get("notes") as string;
 
+    // Vitals Data
+    const bp = formData.get("bp") as string;
+    const pulse = formData.get("pulse") as string;
+    const temperature = formData.get("temperature") as string;
+    const weight = formData.get("weight") as string;
+    const height = formData.get("height") as string;
+    const spo2 = formData.get("spo2") as string;
+
     // Handle Prescription Data
     const medicines = formData.getAll("medicine[]");
     const dosages = formData.getAll("dosage[]");
@@ -36,13 +44,14 @@ export async function saveConsultation(formData: FormData) {
         throw new Error("Forbidden: Access denied to this appointment");
     }
 
-    // Update or Create Visit
+    // Update or Create Visit — now includes clinicId
     const visit = await prisma.visit.upsert({
         where: { appointmentId },
         update: {
             symptoms,
             diagnosis,
             notes,
+            clinicId: appointment.clinicId,
         },
         create: {
             appointmentId,
@@ -50,8 +59,48 @@ export async function saveConsultation(formData: FormData) {
             symptoms,
             diagnosis,
             notes,
+            clinicId: appointment.clinicId,
         },
     });
+
+    // Save Vitals — upsert: if vitals exist for this visit, update; otherwise create
+    const hasVitals = bp || pulse || temperature || weight || height || spo2;
+    if (hasVitals) {
+        // Parse BP "120/80" → systolic/diastolic
+        let bpSystolic: number | null = null;
+        let bpDiastolic: number | null = null;
+        if (bp && bp.includes("/")) {
+            const [sys, dia] = bp.split("/");
+            bpSystolic = parseInt(sys) || null;
+            bpDiastolic = parseInt(dia) || null;
+        }
+
+        const vitalsData = {
+            bpSystolic,
+            bpDiastolic,
+            pulse: pulse ? parseInt(pulse) : null,
+            temperature: temperature ? parseFloat(temperature) : null,
+            weight: weight ? parseFloat(weight) : null,
+            height: height ? parseFloat(height) : null,
+            spo2: spo2 ? parseInt(spo2) : null,
+            patientId,
+            clinicId: appointment.clinicId,
+            visitId: visit.id,
+        };
+
+        const existingVital = await prisma.vital.findFirst({
+            where: { visitId: visit.id },
+        });
+
+        if (existingVital) {
+            await prisma.vital.update({
+                where: { id: existingVital.id },
+                data: vitalsData,
+            });
+        } else {
+            await prisma.vital.create({ data: vitalsData });
+        }
+    }
 
     // Handle Prescription
     if (prescriptionItems.length > 0) {

@@ -88,7 +88,7 @@ export default function DashboardScreen() {
           </Card.Content>
         </Card>
 
-        <Card style={styles.actionCard} onPress={() => { }}>
+        <Card style={styles.actionCard} onPress={() => router.push('/records')}>
           <Card.Content style={styles.actionContent}>
             <Avatar.Icon size={40} icon="pill" />
             <Text style={styles.actionText}>Meds</Text>

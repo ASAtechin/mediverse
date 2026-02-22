@@ -35,6 +35,8 @@ router.get('/', verifyAuth, async (req: AuthRequest, res: Response) => {
                 id: true,
                 name: true,
                 email: true,
+                specialization: true,
+                qualification: true,
                 clinicId: true,
                 clinic: {
                     select: {

@@ -2,18 +2,30 @@ import { prisma } from "@/lib/db";
 import { Pill } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DownloadRxButton } from "@/components/prescription/DownloadRxButton";
+import { requireAuth } from "@/lib/auth-session";
 
 // Prevent static generation — this page needs runtime DB access
 export const dynamic = "force-dynamic";
 
 export default async function PrescriptionsPage() {
+    const session = await requireAuth();
+
+    // Clinic-scoped filter
+    const clinicFilter = session.role === "SUPER_ADMIN" ? {} : { visit: { clinicId: session.clinicId } };
+
     const prescriptions = await prisma.prescription.findMany({
         orderBy: { createdAt: "desc" },
+        where: clinicFilter,
         include: {
             visit: {
                 include: {
                     patient: true,
-                    clinic: true
+                    clinic: true,
+                    appointment: {
+                        include: {
+                            doctor: { select: { name: true } }
+                        }
+                    }
                 }
             }
         },
@@ -63,7 +75,7 @@ export default async function PrescriptionsPage() {
                                         <DownloadRxButton data={{
                                             id: rx.id,
                                             patientName: `${rx.visit.patient.firstName} ${rx.visit.patient.lastName}`,
-                                            doctorName: "Doctor",
+                                            doctorName: rx.visit.appointment?.doctor?.name || "Doctor",
                                             date: rx.createdAt.toLocaleDateString(),
                                             medications: meds,
                                             clinicName: rx.visit.clinic?.name || "Clinic"

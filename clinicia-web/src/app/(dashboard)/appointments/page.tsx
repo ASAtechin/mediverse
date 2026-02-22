@@ -4,9 +4,11 @@ import { useEffect, useState, useCallback } from "react";
 import { BookAppointmentDialog } from "@/components/appointments/BookAppointmentDialog";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
-import { getAppointments, getAppointmentFormData } from "@/actions/appointment";
-import { Loader2, Calendar, Search } from "lucide-react";
+import { getAppointments, getAppointmentFormData, updateAppointmentStatus, rescheduleAppointment, cancelAppointment } from "@/actions/appointment";
+import { Loader2, Calendar, Search, Check, X, Clock, UserCheck, RotateCcw } from "lucide-react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 type AppointmentItem = {
     id: string;
@@ -72,6 +74,26 @@ export default function AppointmentsPage() {
             a.status.toLowerCase().includes(q)
         );
     });
+
+    const handleStatusChange = async (appointmentId: string, newStatus: string) => {
+        try {
+            await updateAppointmentStatus(appointmentId, newStatus);
+            toast.success(`Appointment ${newStatus.toLowerCase()}`);
+            fetchAll();
+        } catch (error: any) {
+            toast.error(error.message || "Failed to update status");
+        }
+    };
+
+    const handleCancel = async (appointmentId: string) => {
+        try {
+            await cancelAppointment(appointmentId);
+            toast.success("Appointment cancelled");
+            fetchAll();
+        } catch (error: any) {
+            toast.error(error.message || "Failed to cancel");
+        }
+    };
 
     if (authLoading || (loading && user)) {
         return (
@@ -166,15 +188,79 @@ export default function AppointmentsPage() {
                                                 "text-xs font-medium uppercase",
                                                 appt.status === "SCHEDULED"
                                                     ? "text-blue-600"
+                                                    : appt.status === "CONFIRMED"
+                                                    ? "text-indigo-600"
+                                                    : appt.status === "CHECKED_IN"
+                                                    ? "text-amber-600"
                                                     : appt.status === "CANCELLED"
                                                     ? "text-red-600"
                                                     : appt.status === "COMPLETED"
                                                     ? "text-green-600"
+                                                    : appt.status === "NO_SHOW"
+                                                    ? "text-slate-400"
                                                     : "text-amber-600"
                                             )}
                                         >
                                             {appt.status}
                                         </p>
+                                    </div>
+
+                                    {/* Status Action Buttons */}
+                                    <div className="flex items-center gap-1">
+                                        {appt.status === "SCHEDULED" && (
+                                            <>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="text-green-600 hover:bg-green-50 h-8 px-2"
+                                                    title="Confirm"
+                                                    onClick={() => handleStatusChange(appt.id, "CONFIRMED")}
+                                                >
+                                                    <Check className="h-3.5 w-3.5 mr-1" /> Accept
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="text-red-600 hover:bg-red-50 h-8 px-2"
+                                                    title="Cancel"
+                                                    onClick={() => handleCancel(appt.id)}
+                                                >
+                                                    <X className="h-3.5 w-3.5 mr-1" /> Decline
+                                                </Button>
+                                            </>
+                                        )}
+                                        {appt.status === "CONFIRMED" && (
+                                            <>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="text-amber-600 hover:bg-amber-50 h-8 px-2"
+                                                    title="Check In"
+                                                    onClick={() => handleStatusChange(appt.id, "CHECKED_IN")}
+                                                >
+                                                    <UserCheck className="h-3.5 w-3.5 mr-1" /> Check In
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="text-red-600 hover:bg-red-50 h-8 px-2"
+                                                    title="Cancel"
+                                                    onClick={() => handleCancel(appt.id)}
+                                                >
+                                                    <X className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </>
+                                        )}
+                                        {appt.status === "CHECKED_IN" && (
+                                            <Link href={`/emr/${appt.id}`}>
+                                                <Button
+                                                    size="sm"
+                                                    className="bg-green-600 hover:bg-green-700 h-8 px-3"
+                                                >
+                                                    Start Consultation
+                                                </Button>
+                                            </Link>
+                                        )}
                                     </div>
                                 </div>
                             </div>

@@ -16,9 +16,10 @@ interface VisitFormProps {
     appointment: any;
     visit: any;
     initialMeds: any[];
+    initialVitals?: any;
 }
 
-export function VisitForm({ appointment, visit, initialMeds }: VisitFormProps) {
+export function VisitForm({ appointment, visit, initialMeds, initialVitals }: VisitFormProps) {
     const [isProcessing, setIsProcessing] = useState(false);
     const [aiData, setAiData] = useState<any>(null); // To store AI suggestions
     const [showReview, setShowReview] = useState(false);
@@ -29,6 +30,40 @@ export function VisitForm({ appointment, visit, initialMeds }: VisitFormProps) {
     const [notes, setNotes] = useState(visit?.notes || "");
     const [keyForRx, setKeyForRx] = useState(0); // To force re-render Rx Manager
     const [meds, setMeds] = useState(initialMeds);
+
+    // Vitals State
+    const [bp, setBp] = useState(initialVitals ? `${initialVitals.bpSystolic || ""}/${initialVitals.bpDiastolic || ""}` : "");
+    const [pulse, setPulse] = useState(initialVitals?.pulse?.toString() || "");
+    const [temperature, setTemperature] = useState(initialVitals?.temperature?.toString() || "");
+    const [weight, setWeight] = useState(initialVitals?.weight?.toString() || "");
+    const [height, setHeight] = useState(initialVitals?.height?.toString() || "");
+    const [spo2, setSpo2] = useState(initialVitals?.spo2?.toString() || "");
+
+    // AI Analysis State
+    const [aiAnalysis, setAiAnalysis] = useState<any>(null);
+    const [analyzingPatient, setAnalyzingPatient] = useState(false);
+
+    const analyzePatientHistory = async () => {
+        setAnalyzingPatient(true);
+        try {
+            const res = await fetch("/api/ai/analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ patientId: appointment.patientId }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setAiAnalysis(data);
+                toast.success("Patient analysis complete!");
+            } else {
+                toast.error("Failed to analyze patient history.");
+            }
+        } catch {
+            toast.error("Error connecting to AI.");
+        } finally {
+            setAnalyzingPatient(false);
+        }
+    };
 
     const handleAudioStop = async (audioBlob: Blob) => {
         setIsProcessing(true);
@@ -161,19 +196,27 @@ export function VisitForm({ appointment, visit, initialMeds }: VisitFormProps) {
                         <div className="grid grid-cols-2 gap-4">
                             <div className="grid gap-1">
                                 <Label className="text-xs text-slate-500">BP (mmHg)</Label>
-                                <Input placeholder="120/80" />
+                                <Input name="bp" placeholder="120/80" value={bp} onChange={(e) => setBp(e.target.value)} />
                             </div>
                             <div className="grid gap-1">
-                                <Label className="text-xs text-slate-500">Pulse</Label>
-                                <Input placeholder="72" />
+                                <Label className="text-xs text-slate-500">Pulse (bpm)</Label>
+                                <Input name="pulse" placeholder="72" value={pulse} onChange={(e) => setPulse(e.target.value)} />
                             </div>
                             <div className="grid gap-1">
                                 <Label className="text-xs text-slate-500">Temp (°F)</Label>
-                                <Input placeholder="98.6" />
+                                <Input name="temperature" placeholder="98.6" value={temperature} onChange={(e) => setTemperature(e.target.value)} />
                             </div>
                             <div className="grid gap-1">
                                 <Label className="text-xs text-slate-500">Weight (kg)</Label>
-                                <Input placeholder="70" />
+                                <Input name="weight" placeholder="70" value={weight} onChange={(e) => setWeight(e.target.value)} />
+                            </div>
+                            <div className="grid gap-1">
+                                <Label className="text-xs text-slate-500">Height (cm)</Label>
+                                <Input name="height" placeholder="170" value={height} onChange={(e) => setHeight(e.target.value)} />
+                            </div>
+                            <div className="grid gap-1">
+                                <Label className="text-xs text-slate-500">SpO2 (%)</Label>
+                                <Input name="spo2" placeholder="98" value={spo2} onChange={(e) => setSpo2(e.target.value)} />
                             </div>
                         </div>
                     </div>
@@ -187,6 +230,66 @@ export function VisitForm({ appointment, visit, initialMeds }: VisitFormProps) {
                             </p>
                         </div>
                     )}
+
+                    {/* AI Patient Analysis */}
+                    <div className="bg-white p-4 rounded-xl border shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-sm font-semibold">AI Patient Analysis</h3>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={analyzePatientHistory}
+                                disabled={analyzingPatient}
+                                className="text-purple-600 border-purple-200 hover:bg-purple-50"
+                            >
+                                {analyzingPatient ? (
+                                    <><Sparkles className="h-3 w-3 mr-1 animate-spin" /> Analyzing...</>
+                                ) : (
+                                    <><Sparkles className="h-3 w-3 mr-1" /> Analyze History</>
+                                )}
+                            </Button>
+                        </div>
+                        {aiAnalysis && (
+                            <div className="space-y-3 text-sm">
+                                <div className="bg-slate-50 p-3 rounded-lg">
+                                    <p className="text-slate-700">{aiAnalysis.summary}</p>
+                                </div>
+                                {aiAnalysis.trends?.length > 0 && (
+                                    <div>
+                                        <span className="text-xs font-semibold text-slate-500 uppercase">Trends</span>
+                                        <div className="mt-1 space-y-1">
+                                            {aiAnalysis.trends.map((t: any, i: number) => (
+                                                <div key={i} className="flex items-center gap-2">
+                                                    <span className={`w-2 h-2 rounded-full ${t.status === 'improving' ? 'bg-green-500' : t.status === 'concerning' ? 'bg-red-500' : 'bg-amber-500'}`} />
+                                                    <span className="text-slate-700">{t.label}: {t.detail}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {aiAnalysis.recommendations?.length > 0 && (
+                                    <div>
+                                        <span className="text-xs font-semibold text-slate-500 uppercase">Recommendations</span>
+                                        <ul className="mt-1 list-disc list-inside text-slate-600">
+                                            {aiAnalysis.recommendations.map((r: string, i: number) => (
+                                                <li key={i}>{r}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                                {aiAnalysis.riskLevel && (
+                                    <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                        aiAnalysis.riskLevel === 'high' ? 'bg-red-100 text-red-700' :
+                                        aiAnalysis.riskLevel === 'moderate' ? 'bg-amber-100 text-amber-700' :
+                                        'bg-green-100 text-green-700'
+                                    }`}>
+                                        Risk Level: {aiAnalysis.riskLevel}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Center/Right Col */}

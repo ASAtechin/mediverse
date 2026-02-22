@@ -178,3 +178,112 @@ export async function createAppointment(formData: FormData) {
     revalidatePath("/appointments");
     revalidatePath("/");
 }
+
+// ─── UPDATE APPOINTMENT STATUS ───────────────────────────────────────────────
+
+const VALID_TRANSITIONS: Record<string, string[]> = {
+    SCHEDULED: ["CONFIRMED", "CANCELLED", "CHECKED_IN", "NO_SHOW"],
+    CONFIRMED: ["CHECKED_IN", "CANCELLED", "NO_SHOW"],
+    CHECKED_IN: ["COMPLETED", "NO_SHOW"],
+    COMPLETED: [], // Terminal state
+    CANCELLED: [], // Terminal state
+    NO_SHOW: [],   // Terminal state
+};
+
+export async function updateAppointmentStatus(appointmentId: string, newStatus: string) {
+    const session = await requireAuth();
+
+    const appointment = await prisma.appointment.findUnique({
+        where: { id: appointmentId },
+        select: { status: true, clinicId: true },
+    });
+
+    if (!appointment) throw new Error("Appointment not found");
+
+    // Verify clinic access
+    if (session.role !== "SUPER_ADMIN" && session.clinicId !== appointment.clinicId) {
+        throw new Error("Forbidden: Access denied");
+    }
+
+    // Validate state transition
+    const allowed = VALID_TRANSITIONS[appointment.status] || [];
+    if (!allowed.includes(newStatus)) {
+        throw new Error(`Cannot change status from ${appointment.status} to ${newStatus}`);
+    }
+
+    await prisma.appointment.update({
+        where: { id: appointmentId },
+        data: { status: newStatus },
+    });
+
+    revalidatePath("/appointments");
+    revalidatePath("/");
+}
+
+// ─── RESCHEDULE APPOINTMENT ──────────────────────────────────────────────────
+
+export async function rescheduleAppointment(appointmentId: string, newDate: string, newTime: string) {
+    const session = await requireAuth();
+
+    const appointment = await prisma.appointment.findUnique({
+        where: { id: appointmentId },
+        select: { status: true, clinicId: true, doctorId: true },
+    });
+
+    if (!appointment) throw new Error("Appointment not found");
+
+    if (session.role !== "SUPER_ADMIN" && session.clinicId !== appointment.clinicId) {
+        throw new Error("Forbidden: Access denied");
+    }
+
+    // Only SCHEDULED or CONFIRMED can be rescheduled
+    if (!["SCHEDULED", "CONFIRMED"].includes(appointment.status)) {
+        throw new Error(`Cannot reschedule a ${appointment.status} appointment`);
+    }
+
+    const newDateTime = new Date(`${newDate}T${newTime}:00`);
+    if (isNaN(newDateTime.getTime())) {
+        throw new Error("Invalid date or time format");
+    }
+
+    const now = new Date();
+    const targetDate = new Date(newDate);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (targetDate < today) {
+        throw new Error("Cannot reschedule to a past date");
+    }
+
+    // Check for double booking
+    const thirtyMinBefore = new Date(newDateTime.getTime() - 30 * 60000);
+    const thirtyMinAfter = new Date(newDateTime.getTime() + 30 * 60000);
+
+    const existing = await prisma.appointment.findFirst({
+        where: {
+            doctorId: appointment.doctorId,
+            id: { not: appointmentId },
+            date: { gte: thirtyMinBefore, lte: thirtyMinAfter },
+            status: { not: "CANCELLED" },
+        },
+    });
+
+    if (existing) {
+        throw new Error("Doctor already has an appointment within 30 minutes of this time slot.");
+    }
+
+    await prisma.appointment.update({
+        where: { id: appointmentId },
+        data: {
+            date: newDateTime,
+            status: "SCHEDULED", // Reset to scheduled after reschedule
+        },
+    });
+
+    revalidatePath("/appointments");
+    revalidatePath("/");
+}
+
+// ─── CANCEL APPOINTMENT ──────────────────────────────────────────────────────
+
+export async function cancelAppointment(appointmentId: string) {
+    return updateAppointmentStatus(appointmentId, "CANCELLED");
+}

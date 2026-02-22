@@ -1,6 +1,6 @@
-import React from 'react';
-import { StyleSheet, View, ScrollView } from 'react-native';
-import { Text, Card, List, ActivityIndicator, Divider } from 'react-native-paper';
+import React, { useState } from 'react';
+import { StyleSheet, View, ScrollView, TouchableOpacity } from 'react-native';
+import { Text, Card, List, ActivityIndicator, Divider, Chip, Button, Portal, Modal } from 'react-native-paper';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -14,6 +14,7 @@ const fetchRecords = async (userId: string) => {
 
 export default function RecordsScreen() {
     const { user } = useAuth();
+    const [selectedVisit, setSelectedVisit] = useState<any>(null);
 
     const { data: records, isLoading } = useQuery({
         queryKey: ['records', user?.id],
@@ -31,41 +32,129 @@ export default function RecordsScreen() {
                 <Text style={{ textAlign: 'center', marginTop: 40, color: 'gray' }}>No records found.</Text>
             ) : (
                 records?.map((visit: any) => (
-                    <Card key={visit.id} style={styles.card}>
-                        <Card.Title
-                            title={format(new Date(visit.createdAt), 'PPP')}
-                            subtitle={visit.appointment?.doctor?.name || 'Doctor Visit'}
-                            left={(props) => <List.Icon {...props} icon="stethoscope" />}
-                        />
-                        <Card.Content>
-                            <Text style={styles.label}>Diagnosis:</Text>
-                            <Text style={styles.value}>{visit.diagnosis || 'None'}</Text>
+                    <TouchableOpacity key={visit.id} onPress={() => setSelectedVisit(visit)} activeOpacity={0.8}>
+                        <Card style={styles.card}>
+                            <Card.Title
+                                title={format(new Date(visit.createdAt), 'PPP')}
+                                subtitle={visit.appointment?.doctor?.name || 'Doctor Visit'}
+                                left={(props) => <List.Icon {...props} icon="stethoscope" />}
+                                right={() => (
+                                    <Chip compact style={{ marginRight: 12 }}>
+                                        {visit.appointment?.type || 'Visit'}
+                                    </Chip>
+                                )}
+                            />
+                            <Card.Content>
+                                <Text style={styles.label}>Diagnosis:</Text>
+                                <Text style={styles.value}>{visit.diagnosis || 'None'}</Text>
+
+                                {visit.symptoms && (
+                                    <>
+                                        <Text style={[styles.label, { marginTop: 8 }]}>Symptoms:</Text>
+                                        <Text style={styles.value}>{visit.symptoms}</Text>
+                                    </>
+                                )}
+
+                                <Divider style={{ marginVertical: 12 }} />
+
+                                <Text style={styles.label}>Prescription:</Text>
+                                {visit.prescriptions?.length > 0 ? (
+                                    visit.prescriptions.map((pres: any) => {
+                                        let meds = [];
+                                        try {
+                                            meds = JSON.parse(pres.medications);
+                                        } catch {
+                                            return <Text key={pres.id} style={styles.value}>Unable to parse prescription data.</Text>;
+                                        }
+                                        return meds.map((m: any, idx: number) => (
+                                            <View key={idx} style={styles.medRow}>
+                                                <Text style={styles.medName}>• {m.medicine || m.name}</Text>
+                                                <Text style={styles.medDose}>{m.dosage} - {m.frequency}</Text>
+                                            </View>
+                                        ));
+                                    })
+                                ) : (
+                                    <Text style={styles.value}>No medications prescribed.</Text>
+                                )}
+                            </Card.Content>
+                            <Card.Actions>
+                                <Button compact onPress={() => setSelectedVisit(visit)}>View Details</Button>
+                            </Card.Actions>
+                        </Card>
+                    </TouchableOpacity>
+                ))
+            )}
+
+            {/* Detail Modal */}
+            <Portal>
+                <Modal
+                    visible={!!selectedVisit}
+                    onDismiss={() => setSelectedVisit(null)}
+                    contentContainerStyle={styles.modal}
+                >
+                    {selectedVisit && (
+                        <ScrollView>
+                            <Text variant="titleLarge" style={{ fontWeight: 'bold', marginBottom: 16 }}>
+                                Visit Details
+                            </Text>
+
+                            <Text style={styles.label}>Date</Text>
+                            <Text style={styles.detailValue}>{format(new Date(selectedVisit.createdAt), 'PPPp')}</Text>
+
+                            <Text style={styles.label}>Doctor</Text>
+                            <Text style={styles.detailValue}>{selectedVisit.appointment?.doctor?.name || 'N/A'}</Text>
+
+                            <Text style={styles.label}>Diagnosis</Text>
+                            <Text style={styles.detailValue}>{selectedVisit.diagnosis || 'N/A'}</Text>
+
+                            <Text style={styles.label}>Symptoms</Text>
+                            <Text style={styles.detailValue}>{selectedVisit.symptoms || 'N/A'}</Text>
+
+                            <Text style={styles.label}>Notes / Plan</Text>
+                            <Text style={styles.detailValue}>{selectedVisit.notes || 'N/A'}</Text>
+
+                            {/* Vitals */}
+                            {selectedVisit.vitals?.length > 0 && (
+                                <>
+                                    <Divider style={{ marginVertical: 12 }} />
+                                    <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 8 }}>Vitals</Text>
+                                    {selectedVisit.vitals.map((v: any) => (
+                                        <View key={v.id} style={styles.vitalsGrid}>
+                                            {v.bpSystolic && <Chip compact>BP: {v.bpSystolic}/{v.bpDiastolic}</Chip>}
+                                            {v.pulse && <Chip compact>Pulse: {v.pulse}</Chip>}
+                                            {v.temperature && <Chip compact>Temp: {v.temperature}°F</Chip>}
+                                            {v.weight && <Chip compact>Weight: {v.weight}kg</Chip>}
+                                            {v.height && <Chip compact>Height: {v.height}cm</Chip>}
+                                            {v.spo2 && <Chip compact>SpO2: {v.spo2}%</Chip>}
+                                        </View>
+                                    ))}
+                                </>
+                            )}
 
                             <Divider style={{ marginVertical: 12 }} />
-
-                            <Text style={styles.label}>Prescription:</Text>
-                            {visit.prescriptions?.length > 0 ? (
-                                visit.prescriptions.map((pres: any) => {
+                            <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 8 }}>Prescription</Text>
+                            {selectedVisit.prescriptions?.length > 0 ? (
+                                selectedVisit.prescriptions.map((pres: any) => {
                                     let meds = [];
-                                    try {
-                                        meds = JSON.parse(pres.medications);
-                                    } catch {
-                                        return <Text key={pres.id} style={styles.value}>Unable to parse prescription data.</Text>;
-                                    }
+                                    try { meds = JSON.parse(pres.medications); } catch { return null; }
                                     return meds.map((m: any, idx: number) => (
                                         <View key={idx} style={styles.medRow}>
                                             <Text style={styles.medName}>• {m.medicine || m.name}</Text>
-                                            <Text style={styles.medDose}>{m.dosage} - {m.frequency}</Text>
+                                            <Text style={styles.medDose}>{m.dosage} • {m.frequency} • {m.duration}</Text>
                                         </View>
                                     ));
                                 })
                             ) : (
-                                <Text style={styles.value}>No medications prescribed.</Text>
+                                <Text style={{ color: 'gray' }}>No prescriptions</Text>
                             )}
-                        </Card.Content>
-                    </Card>
-                ))
-            )}
+
+                            <Button mode="outlined" onPress={() => setSelectedVisit(null)} style={{ marginTop: 20 }}>
+                                Close
+                            </Button>
+                        </ScrollView>
+                    )}
+                </Modal>
+            </Portal>
         </ScrollView>
     );
 }
@@ -79,5 +168,8 @@ const styles = StyleSheet.create({
     value: { marginBottom: 4, color: '#0f172a' },
     medRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
     medName: { fontWeight: '500' },
-    medDose: { color: 'gray', fontSize: 12 }
+    medDose: { color: 'gray', fontSize: 12 },
+    modal: { backgroundColor: 'white', padding: 24, margin: 20, borderRadius: 16, maxHeight: '85%' },
+    detailValue: { marginBottom: 12, color: '#0f172a', fontSize: 15 },
+    vitalsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }
 });

@@ -1,18 +1,12 @@
 import { prisma } from "@/lib/db";
-import { Search } from "lucide-react";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { requireAuth } from "@/lib/auth-session";
+import EMRListClient from "@/components/emr/EMRListClient";
 
-export default async function EMRListPage({
-    searchParams,
-}: {
-    searchParams: Promise<{ clinicId?: string }>;
-}) {
-    const params = await searchParams;
-    const clinicId = params.clinicId;
+export default async function EMRListPage() {
+    const session = await requireAuth();
 
-    // Build clinic-scoped filter
-    const clinicFilter = clinicId ? { clinicId } : {};
+    // Clinic-scoped filter: SUPER_ADMIN sees all, others see only their clinic
+    const clinicFilter = session.role === "SUPER_ADMIN" ? {} : { clinicId: session.clinicId };
 
     const visits = await prisma.visit.findMany({
         where: clinicFilter,
@@ -27,69 +21,20 @@ export default async function EMRListPage({
         },
     });
 
-    return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-                    Clinical Records
-                </h1>
-            </div>
+    // Serialize dates for client component
+    const serializedVisits = visits.map(v => ({
+        id: v.id,
+        appointmentId: v.appointmentId,
+        diagnosis: v.diagnosis,
+        symptoms: v.symptoms,
+        createdAt: v.createdAt.toISOString(),
+        appointmentDate: v.appointment?.date?.toISOString() || null,
+        appointmentTime: v.appointment?.date
+            ? v.appointment.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : null,
+        patientName: `${v.patient.firstName} ${v.patient.lastName}`,
+        doctorName: v.appointment?.doctor?.name || 'Unknown Doctor',
+    }));
 
-            <div className="flex items-center space-x-2 bg-white p-2 rounded-lg border shadow-sm max-w-sm">
-                <Search className="h-5 w-5 text-slate-400" />
-                <input
-                    type="text"
-                    placeholder="Search records..."
-                    className="flex-1 outline-none text-sm"
-                />
-            </div>
-
-            <div className="rounded-md border bg-white shadow-sm overflow-hidden">
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-50 text-slate-500 font-medium">
-                        <tr>
-                            <th className="px-6 py-4">Date</th>
-                            <th className="px-6 py-4">Patient</th>
-                            <th className="px-6 py-4">Diagnosis</th>
-                            <th className="px-6 py-4">Doctor</th>
-                            <th className="px-6 py-4 text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        {visits.map((visit) => (
-                            <tr key={visit.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="px-6 py-4 text-slate-600">
-                                    {visit.appointment?.date ? visit.appointment.date.toLocaleDateString() : visit.createdAt.toLocaleDateString()}
-                                    <div className="text-xs text-slate-400">{visit.appointment?.date ? visit.appointment.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</div>
-                                </td>
-                                <td className="px-6 py-4 font-medium text-slate-900">
-                                    {visit.patient.firstName} {visit.patient.lastName}
-                                </td>
-                                <td className="px-6 py-4 text-slate-600">
-                                    {visit.diagnosis || "-"}
-                                </td>
-                                <td className="px-6 py-4 text-slate-600">
-                                    {visit.appointment?.doctor?.name || 'Unknown Doctor'}
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <Link href={`/emr/${visit.appointmentId}`}>
-                                        <Button variant="outline" size="sm">
-                                            View
-                                        </Button>
-                                    </Link>
-                                </td>
-                            </tr>
-                        ))}
-                        {visits.length === 0 && (
-                            <tr>
-                                <td colSpan={5} className="text-center py-10 text-slate-500">
-                                    No clinical records found. Complete appointments to generate records.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
+    return <EMRListClient visits={serializedVisits} />;
 }

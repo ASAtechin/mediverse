@@ -105,6 +105,7 @@ router.get('/records', verifyAuth, async (req: AuthRequest, res: Response) => {
             },
             include: {
                 prescriptions: true,
+                vitals: true,
                 appointment: {
                     include: {
                         doctor: { select: { name: true } }
@@ -188,17 +189,23 @@ router.post('/appointments', verifyAuth, async (req: AuthRequest, res: Response)
 
         const appointmentDate = new Date(date);
 
-        // Check for double booking
+        // Check for double booking (30-min window)
+        const thirtyMinBefore = new Date(appointmentDate.getTime() - 30 * 60000);
+        const thirtyMinAfter = new Date(appointmentDate.getTime() + 30 * 60000);
+
         const existing = await prisma.appointment.findFirst({
             where: {
                 doctorId,
-                date: appointmentDate,
+                date: {
+                    gte: thirtyMinBefore,
+                    lte: thirtyMinAfter,
+                },
                 status: { not: 'CANCELLED' }
             }
         });
 
         if (existing) {
-            res.status(409).json({ error: "Doctor is already booked at this time" });
+            res.status(409).json({ error: "Doctor already has an appointment within 30 minutes of this time" });
             return;
         }
 
@@ -221,6 +228,104 @@ router.post('/appointments', verifyAuth, async (req: AuthRequest, res: Response)
 
     } catch (error) {
         logger.error({ err: error }, "Error booking patient appointment");
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
+// PATCH /api/patient/appointments/:id/cancel - Cancel an appointment (patient-facing)
+router.patch('/appointments/:id/cancel', verifyAuth, async (req: AuthRequest, res: Response) => {
+    try {
+        const id = req.params.id as string;
+
+        const appointment = await prisma.appointment.findUnique({
+            where: { id },
+            select: { status: true, patientId: true }
+        });
+
+        if (!appointment) {
+            res.status(404).json({ error: "Appointment not found" });
+            return;
+        }
+
+        // Verify ownership: patient can only cancel their own appointments
+        const ownedPatient = await resolvePatient(req);
+        if (!ownedPatient || ownedPatient.id !== appointment.patientId) {
+            res.status(403).json({ error: "Forbidden: You can only cancel your own appointments" });
+            return;
+        }
+
+        // Only SCHEDULED or CONFIRMED can be cancelled
+        if (!["SCHEDULED", "CONFIRMED"].includes(appointment.status)) {
+            res.status(400).json({ error: `Cannot cancel a ${appointment.status} appointment` });
+            return;
+        }
+
+        const updated = await prisma.appointment.update({
+            where: { id },
+            data: { status: "CANCELLED" },
+            include: {
+                doctor: { select: { name: true } },
+                clinic: { select: { name: true } }
+            }
+        });
+
+        res.json(updated);
+
+    } catch (error) {
+        logger.error({ err: error }, "Error cancelling patient appointment");
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
+// GET /api/patient/prescriptions - Fetch prescriptions for a patient
+router.get('/prescriptions', verifyAuth, async (req: AuthRequest, res: Response) => {
+    try {
+        const patientId = req.query.patientId as string;
+
+        if (!patientId) {
+            res.status(400).json({ error: "Patient ID is required" });
+            return;
+        }
+
+        // Verify ownership
+        const ownedPatient = await resolvePatient(req);
+        if (!ownedPatient || ownedPatient.id !== patientId) {
+            const user = await prisma.user.findUnique({
+                where: { firebaseUid: req.user!.uid },
+                select: { clinicId: true, role: true },
+            });
+            const patient = await prisma.patient.findUnique({
+                where: { id: patientId },
+                select: { clinicId: true },
+            });
+            if (!user || !patient || (user.role !== 'SUPER_ADMIN' && user.clinicId !== patient.clinicId)) {
+                res.status(403).json({ error: "Forbidden: Access denied" });
+                return;
+            }
+        }
+
+        const prescriptions = await prisma.prescription.findMany({
+            where: {
+                visit: { patientId }
+            },
+            include: {
+                visit: {
+                    include: {
+                        appointment: {
+                            include: {
+                                doctor: { select: { name: true } }
+                            }
+                        }
+                    }
+                }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        res.json(prescriptions);
+
+    } catch (error) {
+        logger.error({ err: error }, "Error fetching patient prescriptions");
         res.status(500).json({ error: "Internal Server Error" });
     }
 });
