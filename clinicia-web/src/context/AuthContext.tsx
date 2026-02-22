@@ -42,18 +42,19 @@ function isProtectedPath(pathname: string): boolean {
 }
 
 // ─── Session cookie helpers ──────────────────────────────────────────
-async function setSessionCookie(firebaseUser: FirebaseUser): Promise<boolean> {
+/** Sets the session cookie and returns the token string on success (null on failure). */
+async function setSessionCookie(firebaseUser: FirebaseUser): Promise<string | null> {
     try {
-        const token = await firebaseUser.getIdToken();
+        const token = await firebaseUser.getIdToken(true); // Force-refresh to get a fresh token
         const res = await fetch('/api/auth/session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token }),
         });
-        return res.ok;
+        return res.ok ? token : null;
     } catch (e) {
         console.error("[AUTH] Failed to set session cookie", e);
-        return false;
+        return null;
     }
 }
 
@@ -72,13 +73,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const pathname = usePathname();
 
-    const fetchUserProfile = useCallback(async (firebaseUser: FirebaseUser): Promise<'found' | 'not-registered' | 'error'> => {
+    /**
+     * Fetch user profile from DB. If `token` is provided, it's sent as Authorization header
+     * (belt-and-suspenders alongside the cookie). This avoids the race where the cookie
+     * isn't in the browser jar yet.
+     */
+    const fetchUserProfile = useCallback(async (
+        firebaseUser: FirebaseUser,
+        token?: string | null
+    ): Promise<'found' | 'not-registered' | 'error'> => {
         try {
-            // Send token BOTH as Authorization header AND via cookie (belt-and-suspenders)
-            // Cookie may not be available yet due to browser timing after setSessionCookie
-            const token = await firebaseUser.getIdToken();
+            const authToken = token || await firebaseUser.getIdToken();
             const res = await fetch('/api/auth/me', {
-                headers: { Authorization: `Bearer ${token}` },
+                headers: { Authorization: `Bearer ${authToken}` },
                 credentials: 'include',
             });
             if (res.ok) {
@@ -92,7 +99,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 return 'found';
             }
             if (res.status === 404) {
-                // Authenticated in Firebase but no DB record (not registered)
                 console.warn("[AUTH] Firebase user exists but not registered in database");
                 return 'not-registered';
             }
@@ -121,50 +127,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (firebaseUser) {
                 // ── User IS authenticated in Firebase ──
 
-                // 1. Set session cookie FIRST (so middleware works on next navigation)
-                await setSessionCookie(firebaseUser);
+                // 1. Set session cookie FIRST and get back the EXACT token used
+                const token = await setSessionCookie(firebaseUser);
 
-                // 2. Try to load DB profile
-                const profileResult = await fetchUserProfile(firebaseUser);
+                // 2. Try to load DB profile — pass the same token to avoid race
+                const profileResult = await fetchUserProfile(firebaseUser, token);
 
                 if (profileResult !== 'found') {
-                    // Firebase user but no DB record or fetch error
                     const isSignupFlow = currentPath.startsWith('/signup') ||
                                          currentPath.startsWith('/register/signup');
                     if (isSignupFlow) {
                         // On signup — allow (DB record will be created at end of wizard)
                         setUser(firebaseUser as AppUser);
                     } else if (profileResult === 'not-registered') {
-                        // User is authenticated in Firebase but never completed registration.
-                        // Sign them out and redirect to registration with a helpful message.
+                        // Authenticated in Firebase but never completed registration.
                         await clearSessionCookie();
                         await signOut(auth);
                         setUser(null);
-                        router.replace('/register/signup?error=not-registered');
                         setLoading(false);
+                        // Hard redirect to clear history
+                        window.location.href = '/register/signup?error=not-registered';
                         return;
                     } else {
-                        // Transient error (network, server issue) — retry once then give up
-                        console.warn('[AUTH] Profile fetch failed, retrying once...');
-                        await new Promise(r => setTimeout(r, 1000));
-                        const retry = await fetchUserProfile(firebaseUser);
+                        // Transient error — retry once with a fresh token
+                        console.warn('[AUTH] Profile fetch failed, retrying...');
+                        await new Promise(r => setTimeout(r, 1500));
+                        const freshToken = await setSessionCookie(firebaseUser);
+                        const retry = await fetchUserProfile(firebaseUser, freshToken);
                         if (retry !== 'found') {
-                            await clearSessionCookie();
-                            await signOut(auth);
-                            setUser(null);
-                            router.replace('/login?error=session-expired');
-                            setLoading(false);
-                            return;
+                            // Still failing — keep user logged in at Firebase level,
+                            // but allow them to see a fallback. Don't force-logout on
+                            // transient server errors.
+                            console.error('[AUTH] Profile fetch failed after retry');
+                            setUser(firebaseUser as AppUser);
                         }
                     }
                 }
 
-                // 3. If user is on a guest-only page (login/signup/register/pricing),
-                //    redirect to dashboard. This covers both initial load and back-navigation.
+                // 3. If user is on a guest-only page, redirect to dashboard.
+                //    Use window.location.href (not router.replace) to CLEAR the
+                //    entire back-history so pressing back won't show login/signup.
                 if (isGuestOnlyPath(currentPath)) {
                     const params = new URLSearchParams(window.location.search);
                     const redirectTo = params.get('redirect') || '/dashboard';
-                    router.replace(redirectTo);
+                    setLoading(false);
+                    window.location.replace(redirectTo);
+                    return; // Don't setLoading again below
                 }
 
             } else {
@@ -172,10 +180,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 await clearSessionCookie();
                 setUser(null);
 
-                // If on a protected page, redirect to login
+                // If on a protected page, hard-redirect to login
                 if (isProtectedPath(currentPath)) {
-                    const loginUrl = `/login?redirect=${encodeURIComponent(currentPath)}`;
-                    router.replace(loginUrl);
+                    window.location.replace(`/login?redirect=${encodeURIComponent(currentPath)}`);
+                    return;
                 }
             }
 
@@ -185,12 +193,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return () => unsubscribe();
     }, [router, fetchUserProfile]);
 
-    // ─── Token refresh every 50 min ─────────────────────────────────
+    // ─── Token refresh every 10 min — keeps the __session cookie alive ──
     useEffect(() => {
         if (!user) return;
-        const interval = setInterval(async () => {
+
+        const refreshToken = async () => {
             try {
-                const freshToken = await user.getIdToken(true);
+                const freshToken = await user.getIdToken(true); // force refresh
                 await fetch('/api/auth/session', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -199,8 +208,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             } catch (e) {
                 console.error("[AUTH] Token refresh failed", e);
             }
-        }, 50 * 60 * 1000);
-        return () => clearInterval(interval);
+        };
+
+        // Also refresh immediately on visibility change (user returns to tab)
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') refreshToken();
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+
+        const interval = setInterval(refreshToken, 10 * 60 * 1000); // Every 10 minutes
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', handleVisibility);
+        };
     }, [user]);
 
     // ─── Pathname change: redirect guest-only pages if logged in ────
@@ -209,12 +229,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         if (loading) return;
         if (user && pathname && isGuestOnlyPath(pathname)) {
-            // Replace the current history entry so pressing back again
-            // won't land on this guest-only page
-            window.history.replaceState(null, '', '/dashboard');
-            router.replace('/dashboard');
+            // Hard redirect clears the history entry completely —
+            // router.replace only replaces the URL but the entry stays in the back stack
+            window.location.replace('/dashboard');
         }
-    }, [pathname, user, loading, router]);
+    }, [pathname, user, loading]);
 
     // ─── Re-verify profile if missing (post-signup) ─────────────────
     useEffect(() => {

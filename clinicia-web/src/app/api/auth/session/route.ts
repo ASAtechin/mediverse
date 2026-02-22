@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
             secure: process.env.NODE_ENV === "production",
             sameSite: "lax",
             path: "/",
-            maxAge: 60 * 60, // 1 hour — Firebase tokens expire in 1 hour
+            maxAge: 60 * 60 * 24 * 7, // 7 days — token refresh keeps it valid
         });
 
         return NextResponse.json({ success: true });

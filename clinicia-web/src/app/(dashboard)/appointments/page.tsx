@@ -2,14 +2,21 @@ import { prisma } from "@/lib/db";
 import { BookAppointmentDialog } from "@/components/appointments/BookAppointmentDialog";
 import { cn } from "@/lib/utils";
 import { requireAuth } from "@/lib/auth-session";
+import { redirect } from "next/navigation";
 
 export default async function AppointmentsPage({
     searchParams,
 }: {
     searchParams: Promise<{ clinicId?: string }>;
 }) {
-    // Verify authentication and get the real clinicId from session
-    const session = await requireAuth();
+    // Verify authentication — redirect to login if session expired
+    let session;
+    try {
+        session = await requireAuth();
+    } catch {
+        redirect('/login?redirect=/appointments');
+    }
+
     const clinicId = session.role === "SUPER_ADMIN"
         ? (await searchParams).clinicId || undefined
         : session.clinicId;
