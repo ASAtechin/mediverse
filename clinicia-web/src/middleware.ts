@@ -2,13 +2,20 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 // ─── Route Classification ────────────────────────────────────────────
-// Auth-only pages: visible ONLY when NOT logged in → redirect to dashboard if session exists
-const AUTH_ONLY_PATHS = ['/login', '/signup'];
 
-// Public pages: always accessible regardless of auth state
-const PUBLIC_PATHS = [
-    '/register',       // Landing page + full signup wizard + checkout + success + account
+// GUEST-ONLY pages: visible ONLY when NOT logged in.
+// If user has a valid session → redirect to /dashboard.
+// Includes auth pages AND registration/onboarding flow.
+const GUEST_ONLY_PATHS = [
+    '/login',
+    '/signup',
+    '/register',       // Landing + signup wizard + checkout + success
     '/pricing',
+];
+
+// Truly public pages: accessible regardless of auth state.
+// Legal pages, patient-facing portals, etc.
+const PUBLIC_PATHS = [
     '/terms',
     '/privacy',
     '/refund',
@@ -19,8 +26,8 @@ const PUBLIC_PATHS = [
 
 // Everything else is PROTECTED → redirect to /login if no session
 
-function isAuthOnlyPath(pathname: string): boolean {
-    return AUTH_ONLY_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'));
+function isGuestOnlyPath(pathname: string): boolean {
+    return GUEST_ONLY_PATHS.some(p => pathname === p || pathname.startsWith(p + '/') || pathname.startsWith(p));
 }
 
 function isPublicPath(pathname: string): boolean {
@@ -81,23 +88,31 @@ export function middleware(request: NextRequest) {
     const sessionToken = request.cookies.get('__session')?.value;
     const hasValidSession = sessionToken ? isSessionTokenFresh(sessionToken) : false;
 
-    // ── 1. Auth-only pages (login, signup): redirect TO dashboard if already logged in
-    if (isAuthOnlyPath(pathname) && hasValidSession) {
+    // ── 1. Guest-only pages (login, signup, register/*, pricing):
+    //        Redirect TO dashboard if already logged in.
+    if (isGuestOnlyPath(pathname) && hasValidSession) {
         const dashboardUrl = new URL('/dashboard', request.url);
         const response = NextResponse.redirect(dashboardUrl);
         setSecurityHeaders(response);
         return response;
     }
 
-    // ── 2. Public pages: always allow through
+    // ── 2. Guest-only pages WITHOUT a session: allow through (they need to register/login)
+    if (isGuestOnlyPath(pathname) && !hasValidSession) {
+        const response = NextResponse.next();
+        setSecurityHeaders(response);
+        return response;
+    }
+
+    // ── 3. Truly public pages (legal, patient portal): always allow through
     if (isPublicPath(pathname)) {
         const response = NextResponse.next();
         setSecurityHeaders(response);
         return response;
     }
 
-    // ── 3. Protected pages (dashboard, patients, etc.): redirect TO login if not logged in
-    if (!hasValidSession && !isAuthOnlyPath(pathname)) {
+    // ── 4. Protected pages (dashboard, patients, etc.): redirect TO login if not logged in
+    if (!hasValidSession) {
         const loginUrl = new URL('/login', request.url);
         // Preserve the intended destination so we can redirect back after login
         loginUrl.searchParams.set('redirect', pathname);
@@ -110,7 +125,7 @@ export function middleware(request: NextRequest) {
         return response;
     }
 
-    // ── 4. Authenticated user on protected page: allow through
+    // ── 5. Authenticated user on protected page: allow through
     const response = NextResponse.next();
     setSecurityHeaders(response);
     return response;

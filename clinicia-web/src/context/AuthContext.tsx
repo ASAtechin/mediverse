@@ -21,21 +21,24 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({ user: null, loading: true, logout: async () => {} });
 
 // ─── Route classification (must match middleware.ts) ─────────────────
-const AUTH_ONLY_PATHS = ['/login', '/signup'];
-const PUBLIC_PATHS = ['/register', '/pricing', '/terms', '/privacy', '/refund', '/cookies', '/p/', '/portal'];
+// Guest-only: login, signup, register flow, pricing — logged-in users must NOT see these
+const GUEST_ONLY_PATHS = ['/login', '/signup', '/register', '/pricing'];
 
-function isAuthOnlyPath(pathname: string): boolean {
-    return AUTH_ONLY_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'));
+// Truly public: legal pages, patient portal — always accessible
+const PUBLIC_PATHS = ['/terms', '/privacy', '/refund', '/cookies', '/p/', '/portal'];
+
+/** Returns true for pages that only guests (unauthenticated users) should see */
+function isGuestOnlyPath(pathname: string): boolean {
+    return GUEST_ONLY_PATHS.some(p => pathname === p || pathname.startsWith(p + '/') || pathname.startsWith(p));
 }
 
 function isPublicPath(pathname: string): boolean {
-    // Root '/' is public (landing/gateway page)
     if (pathname === '/') return true;
     return PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p));
 }
 
 function isProtectedPath(pathname: string): boolean {
-    return !isAuthOnlyPath(pathname) && !isPublicPath(pathname);
+    return !isGuestOnlyPath(pathname) && !isPublicPath(pathname);
 }
 
 // ─── Session cookie helpers ──────────────────────────────────────────
@@ -127,7 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 if (profileResult !== 'found') {
                     // Firebase user but no DB record or fetch error
                     const isSignupFlow = currentPath.startsWith('/signup') ||
-                                         currentPath.startsWith('/register');
+                                         currentPath.startsWith('/register/signup');
                     if (isSignupFlow) {
                         // On signup — allow (DB record will be created at end of wizard)
                         setUser(firebaseUser as AppUser);
@@ -156,9 +159,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     }
                 }
 
-                // 3. If user is on an auth-only page (login/signup), redirect to dashboard
-                if (isAuthOnlyPath(currentPath)) {
-                    // Check for ?redirect= param
+                // 3. If user is on a guest-only page (login/signup/register/pricing),
+                //    redirect to dashboard. This covers both initial load and back-navigation.
+                if (isGuestOnlyPath(currentPath)) {
                     const params = new URLSearchParams(window.location.search);
                     const redirectTo = params.get('redirect') || '/dashboard';
                     router.replace(redirectTo);
@@ -200,10 +203,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return () => clearInterval(interval);
     }, [user]);
 
-    // ─── Pathname change: redirect auth-only pages if logged in ─────
+    // ─── Pathname change: redirect guest-only pages if logged in ────
+    // This fires on EVERY client-side navigation (including browser back/forward)
+    // and covers /login, /signup, /register/*, /pricing — all guest-only routes.
     useEffect(() => {
         if (loading) return;
-        if (user && pathname && isAuthOnlyPath(pathname)) {
+        if (user && pathname && isGuestOnlyPath(pathname)) {
+            // Replace the current history entry so pressing back again
+            // won't land on this guest-only page
+            window.history.replaceState(null, '', '/dashboard');
             router.replace('/dashboard');
         }
     }, [pathname, user, loading, router]);
@@ -211,7 +219,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // ─── Re-verify profile if missing (post-signup) ─────────────────
     useEffect(() => {
         if (!loading && user && (!user.mongoId || !user.role)) {
-            if (pathname && !pathname.startsWith('/signup') && !pathname.startsWith('/register')) {
+            if (pathname && !pathname.startsWith('/signup') && !pathname.startsWith('/register/signup')) {
                 fetchUserProfile(user); // Result is handled internally (sets user state)
             }
         }
