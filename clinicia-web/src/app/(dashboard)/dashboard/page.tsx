@@ -9,18 +9,14 @@ import {
   TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { motion } from "framer-motion";
 import useSWR from "swr";
 import { getDashboardStats, getWeeklyChartData, getUpcomingSchedule } from "@/actions/dashboard";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2 } from "lucide-react";
-
-import { useRouter } from "next/navigation"; // Added
 
 export default function Home() {
   const { user } = useAuth();
-  const router = useRouter();
 
   // ── ALL hooks MUST be called before any conditional return ──
   const { data: dashboardData } = useSWR(

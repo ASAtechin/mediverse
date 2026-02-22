@@ -14,7 +14,6 @@ import {
     Menu,
     ChevronLeft,
     LogOut,
-    Shield, // Added
     DollarSign,
     Stethoscope,
 } from "lucide-react";

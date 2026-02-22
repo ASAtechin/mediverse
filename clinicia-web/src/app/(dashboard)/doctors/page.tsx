@@ -9,11 +9,9 @@ import {
     Mail,
     Phone,
     Calendar,
-    MoreHorizontal,
     Trash2,
     Pencil,
     Award,
-    Users as UsersIcon,
 } from "lucide-react";
 import { getDoctors, deleteDoctor, type DoctorWithStats } from "@/actions/doctor";
 import { useAuth } from "@/context/AuthContext";

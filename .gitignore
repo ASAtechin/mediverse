@@ -41,3 +41,12 @@ dist/
 build/
 .next/
 out/
+
+# Android build artifacts
+*.apk
+*.aab
+.gradle/
+**/android/.gradle/
+**/android/app/build/
+**/android/build/
+**/build_log*.txt
